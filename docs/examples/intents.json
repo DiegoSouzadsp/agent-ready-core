@@ -1,0 +1,115 @@
+[
+  {
+    "id": "INT-001",
+    "input": "gastei 50 reais no mercado hoje",
+    "expected_operation": "registrar_gasto",
+    "expected_fields": {
+      "descricao": "mercado",
+      "valor": 50.00,
+      "data": "today"
+    },
+    "expected_risk": "validated",
+    "expected_autonomy": "execute_after_validation",
+    "notes": "Categoria deve ser inferida pelo agente (Alimentação)"
+  },
+  {
+    "id": "INT-002",
+    "input": "gastei 600 reais num notebook",
+    "expected_operation": "registrar_gasto",
+    "expected_fields": {
+      "descricao": "notebook",
+      "valor": 600.00
+    },
+    "expected_risk": "validated",
+    "expected_human_confirmation": true,
+    "notes": "Valor > 500 deve disparar human_confirmation_if"
+  },
+  {
+    "id": "INT-003",
+    "input": "recebi meu salário de 6000 hoje no inter",
+    "expected_operation": "registrar_entrada",
+    "expected_fields": {
+      "descricao": "salário",
+      "valor": 6000.00,
+      "tipo": "salario",
+      "conta": "inter"
+    },
+    "expected_risk": "validated",
+    "expected_autonomy": "execute_after_validation"
+  },
+  {
+    "id": "INT-004",
+    "input": "como tá o mês?",
+    "expected_operation": "consulta_mes",
+    "expected_fields": {},
+    "expected_risk": "free",
+    "expected_autonomy": "execute_immediately",
+    "notes": "Operação de leitura — executa direto"
+  },
+  {
+    "id": "INT-005",
+    "input": "quanto gastei",
+    "expected_operation": "consulta_mes",
+    "expected_fields": {},
+    "expected_risk": "free",
+    "expected_autonomy": "execute_immediately"
+  },
+  {
+    "id": "INT-006",
+    "input": "lembra amanhã às 9h ligar pro médico",
+    "expected_operation": "criar_lembrete",
+    "expected_fields": {
+      "mensagem": "ligar pro médico",
+      "agendado_para": "tomorrow 09:00"
+    },
+    "expected_risk": "validated",
+    "expected_validation": ["no_duplicate", "must_be_future"]
+  },
+  {
+    "id": "INT-007",
+    "input": "tarefa comprar remédio pra Nicolin até sexta",
+    "expected_operation": "criar_tarefa",
+    "expected_fields": {
+      "titulo": "comprar remédio pra Nicolin",
+      "data_vencimento": "next_friday",
+      "prioridade": "media"
+    },
+    "expected_risk": "validated"
+  },
+  {
+    "id": "INT-008",
+    "input": "abasteci 45 litros a 280 reais, tô com 47320 km",
+    "expected_operation": "registrar_abastecimento",
+    "expected_fields": {
+      "litros": 45,
+      "valor_total": 280.00,
+      "km_atual": 47320
+    },
+    "expected_risk": "validated",
+    "expected_computed": ["preco_litro", "media_kml"],
+    "notes": "veiculo_id deve ser inferido do contexto (único veículo)"
+  },
+  {
+    "id": "INT-009",
+    "input": "guardei 500 na reserva de emergência",
+    "expected_operation": "aporte_meta",
+    "expected_fields": {
+      "valor": 500.00
+    },
+    "expected_risk": "validated",
+    "notes": "meta_id deve ser inferido pelo nome 'reserva de emergência'"
+  },
+  {
+    "id": "INT-010",
+    "input": "apaga aquele gasto do mercado de ontem",
+    "expected_operation": "deletar_gasto",
+    "expected_risk": "confirmation",
+    "expected_autonomy": "require_explicit_confirmation",
+    "expected_flow": [
+      "agente busca gasto por descrição e data",
+      "apresenta resumo: R$50 em Alimentação em 11/06",
+      "solicita CONFIRMAR",
+      "aguarda — NÃO executa sozinho"
+    ]
+  }
+]

@@ -1,0 +1,489 @@
+schema_version: "0.1"
+module: tarefas
+system: familyos
+updated_at: "2026-06-12"
+
+operations:
+
+  - id: OP-TAR-01
+    name: criar_tarefa
+    description: Cria uma nova tarefa com responsável e prioridade
+    risk_level: validated
+    autonomy_policy: execute_after_validation
+
+    input_schema:
+      titulo:
+        type: string
+        required: true
+        min_length: 3
+      responsavel_id:
+        type: int
+        required: true
+        infer_from_context: true
+        foreign_key:
+          table: membros
+          filter:
+            ativo: true
+      prioridade:
+        type: enum
+        values: [baixa, media, alta]
+        required: false
+        default: media
+      data_vencimento:
+        type: date
+        required: false
+      descricao:
+        type: string
+        required: false
+      origem:
+        type: enum
+        values: [manual, gmail, hermes, calendar]
+        required: false
+        default: hermes
+
+    signpost:
+      success:
+        include: [tarefa_id, titulo, vencimento]
+        next_actions:
+          - criar_lembrete
+          - listar_tarefas
+
+    audit:
+      log: true
+      include_fields: [titulo, responsavel_id, origem]
+
+  - id: OP-TAR-02
+    name: criar_lembrete
+    description: Agenda um lembrete para ser enviado via Telegram pelo cron
+    risk_level: validated
+    autonomy_policy: execute_after_validation
+
+    input_schema:
+      membro_id:
+        type: int
+        required: true
+        infer_from_context: true
+        foreign_key:
+          table: membros
+      mensagem:
+        type: string
+        required: true
+      agendado_para:
+        type: datetime
+        required: true
+        must_be: future
+      tarefa_id:
+        type: int
+        required: false
+        foreign_key:
+          table: tarefas
+
+    validation_rules:
+      - id: no_duplicate
+        description: Não criar lembrete duplicado
+        query: "SELECT id FROM lembretes WHERE membro_id = :membro_id AND mensagem = :mensagem AND agendado_para = :agendado_para AND enviado = false"
+        assert_empty: true
+        on_fail:
+          message: "Já existe um lembrete idêntico agendado para este horário."
+
+    signpost:
+      success:
+        include: [lembrete_id, agendado_para]
+        message: "Lembrete agendado. O cron vai enviar no horário via Telegram."
+        next_actions:
+          - listar_lembretes
+
+    audit:
+      log: true
+      include_fields: [membro_id, agendado_para, tarefa_id]
+
+  - id: OP-TAR-03
+    name: atualizar_status_tarefa
+    description: Atualiza o status de uma tarefa respeitando transições válidas
+    risk_level: contextual
+    autonomy_policy: validate_state_then_execute
+
+    input_schema:
+      tarefa_id:
+        type: int
+        required: true
+        foreign_key:
+          table: tarefas
+      novo_status:
+        type: enum
+        values: [pendente, em_progresso, concluida, cancelada]
+        required: true
+      motivo:
+        type: string
+        required_if:
+          field: novo_status
+          value: cancelada
+
+    validation_rules:
+      - id: valid_transition
+        description: Validar transições de estado permitidas
+        transitions:
+          pendente: [em_progresso, concluida, cancelada]
+          em_progresso: [concluida, cancelada, pendente]
+          concluida: []
+          cancelada: []
+        on_invalid:
+          message: "Transição de {{status_atual}} para {{novo_status}} não é permitida."
+
+    signpost:
+      success:
+        include: [tarefa_titulo, status_anterior, status_atual]
+        next_actions:
+          - listar_tarefas
+      blocked_transition:
+        message_template: "Não é possível alterar uma tarefa {{status_atual}}."
+
+    audit:
+      log: true
+      include_fields: [tarefa_id, status_anterior, novo_status, motivo]
+
+---
+schema_version: "0.1"
+module: veiculos
+system: familyos
+updated_at: "2026-06-12"
+
+operations:
+
+  - id: OP-VEI-01
+    name: registrar_abastecimento
+    description: Registra abastecimento de combustível com cálculo automático de média
+    risk_level: validated
+    autonomy_policy: execute_after_validation
+
+    input_schema:
+      veiculo_id:
+        type: int
+        required: true
+        foreign_key:
+          table: veiculos
+      litros:
+        type: decimal
+        required: true
+        gt: 0
+      valor_total:
+        type: decimal
+        required: true
+        gt: 0
+      km_atual:
+        type: decimal
+        required: true
+        gt: 0
+      tipo_combustivel:
+        type: enum
+        values: [gasolina, etanol, diesel, gnv]
+        required: true
+      posto:
+        type: string
+        required: false
+      data:
+        type: date
+        required: false
+        default: today
+
+    validation_rules:
+      - id: km_sequence
+        description: km_atual deve ser maior que o último km registrado
+        query: "SELECT MAX(km_atual) as ultimo_km FROM abastecimentos WHERE veiculo_id = :veiculo_id"
+        assert:
+          km_atual_gte: ultimo_km
+        on_fail:
+          message: "Km informado ({{km_atual}}) é menor que o último registrado ({{ultimo_km}}). Confirma?"
+
+    computed_fields:
+      - name: preco_litro
+        formula: "valor_total / litros"
+      - name: km_desde_ultimo
+        formula: "km_atual - ultimo_km"
+      - name: media_kml
+        formula: "km_desde_ultimo / litros"
+
+    side_effects:
+      - id: update_veiculo_km
+        description: Atualizar km_atual do veículo
+        query: "UPDATE veiculos SET km_atual = :km_atual WHERE id = :veiculo_id"
+
+    signpost:
+      success:
+        include: [preco_litro, media_kml, km_rodados_desde_ultimo, km_atualizado]
+        next_actions:
+          - registrar_manutencao
+          - consulta_veiculo
+
+    audit:
+      log: true
+      include_fields: [veiculo_id, litros, valor_total, km_atual]
+
+  - id: OP-VEI-02
+    name: registrar_manutencao
+    description: Registra manutenção realizada com criação automática de lembrete
+    risk_level: validated
+    autonomy_policy: execute_after_validation
+
+    input_schema:
+      veiculo_id:
+        type: int
+        required: true
+        foreign_key:
+          table: veiculos
+      tipo:
+        type: enum
+        values: [oleo, pneu, filtro, freio, revisao, ipva, licenciamento, seguro, outro]
+        required: true
+      custo:
+        type: decimal
+        required: true
+        gt: 0
+      data_realizada:
+        type: date
+        required: false
+        default: today
+      proxima_data:
+        type: date
+        required: false
+      proximo_km:
+        type: decimal
+        required: false
+      local:
+        type: string
+        required: false
+      descricao:
+        type: string
+        required: false
+
+    side_effects:
+      - id: auto_lembrete_proxima
+        description: Criar lembrete automático 7 dias antes da próxima manutenção
+        trigger_if_field_present: proxima_data
+        action: criar_lembrete
+        params:
+          dias_antes: 7
+          message_template: "Lembrete: {{tipo}} do {{veiculo}} prevista para {{proxima_data}}"
+
+    signpost:
+      success:
+        include: [manutencao_id, tipo, proxima_data]
+        alerts: [vencimentos_proximos]
+        next_actions:
+          - consulta_veiculo
+
+    audit:
+      log: true
+      include_fields: [veiculo_id, tipo, custo, data_realizada]
+
+---
+schema_version: "0.1"
+module: saude
+system: familyos
+updated_at: "2026-06-12"
+
+operations:
+
+  - id: OP-SAU-01
+    name: consultar_ficha_medica
+    description: Consulta ficha médica completa de um membro
+    risk_level: free
+    autonomy_policy: execute_immediately
+
+    input_schema:
+      membro_id:
+        type: int
+        required: true
+        foreign_key:
+          table: membros
+
+    signpost:
+      success:
+        include: [membro_nome, tipo_sanguineo, alergias, condicoes, plano_saude, medico_responsavel]
+        next_actions:
+          - atualizar_ficha_medica
+          - consultar_medicamentos
+          - consultar_vacinas
+
+    audit:
+      log: false
+
+  - id: OP-SAU-02
+    name: registrar_vacina
+    description: Registra vacina aplicada com lembrete automático para próxima dose
+    risk_level: validated
+    autonomy_policy: execute_after_validation
+
+    input_schema:
+      membro_id:
+        type: int
+        required: true
+        infer_from_context: true
+        foreign_key:
+          table: membros
+      nome:
+        type: string
+        required: true
+      data_aplicacao:
+        type: date
+        required: false
+        default: today
+      proxima_dose:
+        type: date
+        required: false
+      local:
+        type: string
+        required: false
+      lote:
+        type: string
+        required: false
+
+    side_effects:
+      - id: auto_lembrete_proxima_dose
+        description: Criar lembrete 30 dias antes da próxima dose
+        trigger_if_field_present: proxima_dose
+        action: criar_lembrete
+        params:
+          dias_antes: 30
+          message_template: "Lembrete: próxima dose de {{vacina}} em {{proxima_dose}}"
+
+    signpost:
+      success:
+        include: [vacina_nome, membro_nome, proxima_dose]
+        next_actions:
+          - consultar_vacinas
+
+    audit:
+      log: true
+      include_fields: [membro_id, nome, data_aplicacao, lote]
+
+---
+schema_version: "0.1"
+module: datas
+system: familyos
+updated_at: "2026-06-12"
+
+operations:
+
+  - id: OP-DAT-01
+    name: registrar_data_importante
+    description: Registra data importante com lembrete automático configurável
+    risk_level: validated
+    autonomy_policy: execute_after_validation
+
+    input_schema:
+      titulo:
+        type: string
+        required: true
+      data:
+        type: date
+        format: YYYY-MM-DD
+        required: true
+      tipo:
+        type: enum
+        values: [aniversario, casamento, renovacao, vencimento, feriado, escola, religioso, outro]
+        required: true
+      recorrente:
+        type: bool
+        required: false
+        default_by_tipo:
+          aniversario: true
+          casamento: true
+          default: false
+      membro_id:
+        type: int
+        required: false
+        foreign_key:
+          table: membros
+      dias_antecipar_lembrete:
+        type: int
+        required: false
+        default: 3
+        min: 0
+        max: 30
+      emoji:
+        type: string
+        required: false
+        max_length: 2
+
+    signpost:
+      success:
+        include: [titulo, data, recorrente, lembrete_configurado]
+        next_actions:
+          - listar_datas_importantes
+
+    audit:
+      log: true
+      include_fields: [titulo, data, tipo, membro_id]
+
+---
+schema_version: "0.1"
+module: cardapio
+system: familyos
+updated_at: "2026-06-12"
+
+operations:
+
+  - id: OP-CAR-01
+    name: consultar_cardapio
+    description: Consulta cardápio da semana
+    risk_level: free
+    autonomy_policy: execute_immediately
+
+    input_schema:
+      semana_inicio:
+        type: date
+        required: false
+        default: current_monday
+        description: "Segunda-feira da semana desejada (YYYY-MM-DD)"
+
+    signpost:
+      success:
+        include: [semana, refeicoes]
+        next_actions:
+          - registrar_cardapio
+          - gerar_lista_compras
+
+    audit:
+      log: false
+
+  - id: OP-CAR-02
+    name: gerar_lista_compras
+    description: Gera lista de compras baseada no cardápio da semana
+    risk_level: validated
+    autonomy_policy: execute_after_validation
+
+    input_schema:
+      semana_inicio:
+        type: date
+        required: false
+        default: current_monday
+
+    validation_rules:
+      - id: cardapio_exists
+        description: Deve existir cardápio para a semana
+        query: "SELECT COUNT(*) as total FROM cardapios WHERE semana_inicio = :semana_inicio"
+        assert:
+          total_gt: 0
+        on_fail:
+          message: "Não há cardápio cadastrado para a semana de {{semana_inicio}}. Cadastre o cardápio primeiro."
+          suggest: registrar_cardapio
+
+      - id: no_duplicate_list
+        description: Verificar se já existe lista para a semana
+        query: "SELECT COUNT(*) as total FROM lista_compras WHERE semana_inicio = :semana_inicio"
+        warn_if:
+          total_gt: 0
+        message: "Já existe uma lista para esta semana. Deseja sobrescrever?"
+        policy: human_confirmation
+
+    signpost:
+      success:
+        include: [total_itens, estimativa_total]
+        next_actions:
+          - marcar_comprado
+          - consultar_lista_compras
+
+    audit:
+      log: true
+      include_fields: [semana_inicio, total_itens]
