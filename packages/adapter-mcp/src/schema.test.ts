@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import type { InputField, Operation } from '@agent-ready/core';
-import { inputFieldsToZodShape, operationInputSchema } from './schema.js';
+import {
+  inputFieldsToZodShape,
+  operationInputSchema,
+  operationToolDescription,
+  operationToolAnnotations,
+} from './schema.js';
 
 function field(overrides: Partial<InputField>): InputField {
   return { name: 'f', type: 'string', ...overrides };
@@ -134,5 +139,77 @@ describe('operationInputSchema', () => {
     };
 
     expect(operationInputSchema(operation)).toEqual({});
+  });
+});
+
+describe('operationToolDescription', () => {
+  function op(overrides: Partial<Operation>): Operation {
+    return {
+      id: 'OP-X',
+      name: 'op_x',
+      description: 'Does the thing',
+      risk_level: 'free',
+      autonomy_policy: 'execute_immediately',
+      ...overrides,
+    };
+  }
+
+  it('prefixes the description with a [risk: <level>] tag for each risk level', () => {
+    expect(operationToolDescription(op({ risk_level: 'free' }))).toBe('[risk: free] Does the thing');
+    expect(operationToolDescription(op({ risk_level: 'validated' }))).toBe('[risk: validated] Does the thing');
+    expect(operationToolDescription(op({ risk_level: 'contextual' }))).toBe('[risk: contextual] Does the thing');
+  });
+
+  it('appends an explicit "always requires confirmation" note for risk_level:confirmation', () => {
+    const result = operationToolDescription(op({ risk_level: 'confirmation' }));
+    expect(result).toBe(
+      '[risk: confirmation] Does the thing — always requires explicit human confirmation; this call returns a pending response and never executes on its own.',
+    );
+  });
+
+  it('appends a conditional-confirmation note when a field has human_confirmation_if, on a non-confirmation-risk operation', () => {
+    const operation = op({
+      risk_level: 'validated',
+      input_schema: {
+        valor: { type: 'decimal', required: true, human_confirmation_if: { gt: 500 } },
+      },
+    });
+
+    expect(operationToolDescription(operation)).toBe(
+      '[risk: validated] Does the thing — may require human confirmation depending on input values.',
+    );
+  });
+
+  it('does not append any confirmation note when no field has human_confirmation_if', () => {
+    const operation = op({
+      risk_level: 'validated',
+      input_schema: { valor: { type: 'decimal', required: true } },
+    });
+
+    expect(operationToolDescription(operation)).toBe('[risk: validated] Does the thing');
+  });
+
+  it('falls back to the operation name when description is absent', () => {
+    const operation = op({ description: undefined });
+    expect(operationToolDescription(operation)).toBe('[risk: free] op_x');
+  });
+});
+
+describe('operationToolAnnotations', () => {
+  function op(risk_level: Operation['risk_level']): Operation {
+    return { id: 'OP-X', name: 'op_x', risk_level, autonomy_policy: 'execute_immediately' };
+  }
+
+  it('sets readOnlyHint:true for risk_level:free', () => {
+    expect(operationToolAnnotations(op('free'))).toEqual({ readOnlyHint: true });
+  });
+
+  it('sets destructiveHint:true for risk_level:confirmation', () => {
+    expect(operationToolAnnotations(op('confirmation'))).toEqual({ destructiveHint: true });
+  });
+
+  it('returns undefined for risk_level:validated and risk_level:contextual (no single hint fits)', () => {
+    expect(operationToolAnnotations(op('validated'))).toBeUndefined();
+    expect(operationToolAnnotations(op('contextual'))).toBeUndefined();
   });
 });

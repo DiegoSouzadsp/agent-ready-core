@@ -49,16 +49,29 @@ describe('registerArsTools', () => {
     expect(registeredNames.sort()).toEqual(['deletar_gasto', 'registrar_gasto']);
   });
 
-  it('passes the operation description and a Zod inputSchema in the tool config', () => {
+  it('passes a risk-tagged description and a Zod inputSchema in the tool config', () => {
     const agent = AgentReady.fromYAML(TWO_OP_SCHEMA);
     const server = mockServer();
 
     registerArsTools(server as any, agent, {});
 
     const [, config] = server.registerTool.mock.calls.find((call) => call[0] === 'registrar_gasto')!;
-    expect(config.description).toBe('Registra um gasto');
+    expect(config.description).toBe('[risk: validated] Registra um gasto');
     expect(config.inputSchema.valor).toBeDefined();
     expect(config.inputSchema.valor.safeParse(50).success).toBe(true);
+  });
+
+  it('flags a risk_level:confirmation operation in both the description and annotations.destructiveHint', () => {
+    const agent = AgentReady.fromYAML(TWO_OP_SCHEMA);
+    const server = mockServer();
+
+    registerArsTools(server as any, agent, {});
+
+    const [, config] = server.registerTool.mock.calls.find((call) => call[0] === 'deletar_gasto')!;
+    expect(config.description).toBe(
+      '[risk: confirmation] Deleta um gasto — always requires explicit human confirmation; this call returns a pending response and never executes on its own.',
+    );
+    expect(config.annotations).toEqual({ destructiveHint: true });
   });
 
   it('registers zero tools for a schema with zero operations, without throwing', () => {

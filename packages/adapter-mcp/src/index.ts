@@ -1,11 +1,16 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { AgentReady } from '@agent-ready/core';
-import { operationInputSchema } from './schema.js';
+import { operationInputSchema, operationToolDescription, operationToolAnnotations } from './schema.js';
 import { runOperation } from './pipeline.js';
 import type { ExecutorMap } from './types.js';
 
 export type { ExecutorFn, ExecutorMap, McpToolResult } from './types.js';
-export { inputFieldsToZodShape, operationInputSchema } from './schema.js';
+export {
+  inputFieldsToZodShape,
+  operationInputSchema,
+  operationToolDescription,
+  operationToolAnnotations,
+} from './schema.js';
 export { runOperation } from './pipeline.js';
 
 export interface RegisterArsToolsOptions {
@@ -30,6 +35,8 @@ export function registerArsTools(
 ): void {
   for (const opDef of agent.allOperations) {
     const inputSchema = operationInputSchema(opDef);
+    const description = operationToolDescription(opDef);
+    const annotations = operationToolAnnotations(opDef);
 
     const handler = async (input: Record<string, unknown>) =>
       runOperation(agent.operation(opDef.name), executors[opDef.name], input, options.context ?? {});
@@ -43,7 +50,7 @@ export function registerArsTools(
     // is safe — see design.md's Zod Tech Decision.
     (server.registerTool as (name: string, config: unknown, cb: unknown) => unknown)(
       opDef.name,
-      { description: opDef.description, inputSchema },
+      { description, inputSchema, annotations },
       handler,
     );
   }
