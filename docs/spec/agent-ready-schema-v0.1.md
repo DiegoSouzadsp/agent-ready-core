@@ -1,126 +1,126 @@
-# Agent-Ready Schema — Especificação v0.1
+# Agent-Ready Schema — Specification v0.1
 
-> Proposta de padrão aberto para sistemas operáveis por agentes com autonomia segura.
-> Status: Draft — Primeira implementação experimental: FamilyOS
-
----
-
-## Motivação
-
-APIs foram sempre projetadas para humanos programarem.
-O agente é o primeiro consumidor que lê, interpreta e decide.
-
-Mas leitura não é suficiente. Para que um agente opere um sistema com autonomia real — sem loop humano a cada passo — o sistema precisa expor contratos que o agente possa carregar e validar, não apenas documentação que o agente tenta seguir.
-
-Agent-Ready Schema é esse contrato.
+> Proposed open standard for systems safely operable by autonomous AI agents.
+> Status: Draft — First experimental implementation: FamilyOS
 
 ---
 
-## Estrutura de um schema
+## Motivation
 
-Todo schema Agent-Ready é um arquivo YAML com os seguintes campos de nível superior:
+APIs were always designed for humans to program against.
+The agent is the first consumer that reads, interprets, and decides.
+
+But reading isn't enough. For an agent to operate a system with real autonomy — without a human in the loop at every step — the system needs to expose contracts the agent can load and validate, not just documentation the agent tries to follow.
+
+Agent-Ready Schema is that contract.
+
+---
+
+## Structure of a schema
+
+Every Agent-Ready schema is a YAML file with the following top-level fields:
 
 ```yaml
-schema_version: string       # versão do padrão (ex: "0.1")
-module: string               # nome do módulo (ex: financeiro)
-system: string               # nome do sistema (ex: familyos)
-updated_at: date             # data da última atualização
-operations: list[Operation]  # lista de operações
+schema_version: string       # standard version (e.g. "0.1")
+module: string                # module name (e.g. finance)
+system: string                 # system name (e.g. familyos)
+updated_at: date               # last update date
+operations: list[Operation]    # list of operations
 ```
 
 ---
 
-## Estrutura de uma Operation
+## Operation structure
 
 ```yaml
 id: string
-# Identificador único. Formato recomendado: OP-{MODULO}-{SEQ}
-# Ex: OP-FIN-01
+# Unique identifier. Recommended format: OP-{MODULE}-{SEQ}
+# E.g.: OP-FIN-01
 
 name: string
-# Nome snake_case da operação. Usado pelo agente para referenciar.
-# Ex: registrar_gasto
+# snake_case operation name. Used by the agent to reference it.
+# E.g.: registrar_gasto
 
 description: string
-# Descrição em linguagem natural do que a operação faz.
+# Natural-language description of what the operation does.
 
 module: string
-# Módulo ao qual pertence.
+# The module this operation belongs to.
 
 risk_level: enum
-# Nível de risco da operação. Ver tabela de níveis abaixo.
-# Valores: free | validated | contextual | confirmation
+# Risk classification of the operation. See the risk levels table below.
+# Values: free | validated | contextual | confirmation
 
 autonomy_policy: enum
-# Política de execução derivada do risk_level.
-# Valores: execute_immediately | execute_after_validation |
+# Execution policy derived from risk_level.
+# Values: execute_immediately | execute_after_validation |
 #          validate_state_then_execute | require_explicit_confirmation
 
 input_schema: map[string, Field]
-# Campos de entrada. Ver estrutura Field abaixo.
+# Input fields. See the Field structure below.
 
-validation_rules: list[ValidationRule]   # opcional
-# Regras de validação além dos campos (ex: sem duplicata, confiança OCR).
+validation_rules: list[ValidationRule]   # optional
+# Validation rules beyond field-level checks (e.g. no duplicates, OCR confidence).
 
-state_guards: list[StateGuard]           # opcional
-# Condições de estado do sistema que devem ser verdadeiras antes de executar.
+state_guards: list[StateGuard]           # optional
+# System state conditions that must hold true before execution.
 
-human_confirmation: HumanConfirmation    # obrigatório se risk_level == confirmation
-# Configuração da confirmação explícita exigida.
+human_confirmation: HumanConfirmation    # required if risk_level == confirmation
+# Configuration for the explicit confirmation required.
 
-computed_fields: list[ComputedField]     # opcional
-# Campos calculados automaticamente a partir dos inputs.
+computed_fields: list[ComputedField]     # optional
+# Fields automatically computed from the inputs.
 
-side_effects: list[SideEffect]           # opcional
-# Ações colaterais disparadas após execução bem-sucedida.
+side_effects: list[SideEffect]           # optional
+# Side actions triggered after a successful execution.
 
 signpost: Signpost
-# O que o agente deve retornar após a operação. Ver estrutura Signpost abaixo.
+# What the agent should return after the operation. See the Signpost structure below.
 
 audit: Audit
-# Configuração de auditoria e log.
+# Audit and logging configuration.
 ```
 
 ---
 
-## Níveis de risco
+## Risk levels
 
-| risk_level   | autonomy_policy                    | Descrição |
+| risk_level   | autonomy_policy                    | Description |
 |--------------|-----------------------------------|-----------|
-| free         | execute_immediately                | Leitura pura. Nenhum estado modificado. Agente executa direto. |
-| validated    | execute_after_validation           | Cria ou modifica estado. Agente valida campos e regras antes. |
-| contextual   | validate_state_then_execute        | Modifica estado existente. Agente verifica transições válidas. Pode pausar se ambíguo. |
-| confirmation | require_explicit_confirmation      | Irreversível. Agente apresenta resumo e exige token de confirmação antes de executar. |
+| free         | execute_immediately                | Pure read. No state modified. Agent executes directly. |
+| validated    | execute_after_validation           | Creates or modifies state. Agent validates fields and rules first. |
+| contextual   | validate_state_then_execute        | Modifies existing state. Agent checks for valid transitions. May pause if ambiguous. |
+| confirmation | require_explicit_confirmation      | Irreversible. Agent presents a summary and requires a confirmation token before executing. |
 
 ---
 
-## Estrutura Field
+## Field structure
 
 ```yaml
 field_name:
   type: string | int | decimal | bool | date | datetime | enum | base64 | any
   required: bool
-  required_if:                    # opcional — condicional
+  required_if:                    # optional — conditional
     field: string
     value: any
-  default: any                    # opcional
-  default_by_tipo: map            # opcional — default por valor de outro campo
-  infer_from_context: bool        # opcional — agente busca no contexto Hermes
-  min_length: int                 # opcional — para string
-  max_length: int                 # opcional — para string
-  min: number                     # opcional — para numeric
-  max: number                     # opcional — para numeric
-  gt: number                      # opcional — greater than
-  gte: number                     # opcional — greater than or equal
-  format: string                  # opcional — ex: YYYY-MM-DD
-  values: list                    # obrigatório para type: enum
-  must_be: string                 # opcional — ex: future (para datetime)
-  must_contain: string            # opcional — para confirmações explícitas
-  foreign_key:                    # opcional
+  default: any                    # optional
+  default_by_tipo: map            # optional — default based on another field's value
+  infer_from_context: bool        # optional — agent looks it up in the Hermes context
+  min_length: int                 # optional — for string
+  max_length: int                 # optional — for string
+  min: number                     # optional — for numeric
+  max: number                     # optional — for numeric
+  gt: number                      # optional — greater than
+  gte: number                     # optional — greater than or equal
+  format: string                  # optional — e.g. YYYY-MM-DD
+  values: list                    # required for type: enum
+  must_be: string                 # optional — e.g. future (for datetime)
+  must_contain: string            # optional — for explicit confirmations
+  foreign_key:                    # optional
     table: string
-    filter: map                   # opcional — WHERE conditions
-  description: string             # opcional — anotação humana
-  human_confirmation_if:          # opcional — pausa para confirmação se condição for verdadeira
+    filter: map                   # optional — WHERE conditions
+  description: string             # optional — human-readable annotation
+  human_confirmation_if:          # optional — pauses for confirmation if the condition is true
     gt: number
     gte: number
     lt: number
@@ -130,89 +130,89 @@ field_name:
 
 ---
 
-## Estrutura ValidationRule
+## ValidationRule structure
 
 ```yaml
 - id: string
   description: string
-  query: string                   # SQL com :params
-  assert: map                     # condição que deve ser verdadeira
-  assert_empty: bool              # resultado deve ser vazio
-  check: string                   # expressão booleana (ex: ocr_confidence >= 0.8)
-  warn_if: map                    # condição que dispara aviso (não bloqueia)
-  policy: show_diff | human_confirmation   # o que fazer quando a regra falha
+  query: string                   # SQL with :params
+  assert: map                     # condition that must hold true
+  assert_empty: bool               # result must be empty
+  check: string                    # boolean expression (e.g. ocr_confidence >= 0.8)
+  warn_if: map                     # condition that triggers a warning (does not block)
+  policy: show_diff | human_confirmation   # what to do when the rule fails
   on_fail:
-    message: string               # mensagem com template {{campo}}
-    policy: string                # block | human_confirmation | warn
-    suggest: string               # próxima ação sugerida
-  transitions:                    # para validação de máquina de estados
-    estado_atual: list[estados_permitidos]
+    message: string                # message with {{field}} template
+    policy: string                 # block | human_confirmation | warn
+    suggest: string                # suggested next action
+  transitions:                     # for state-machine validation
+    current_state: list[allowed_states]
   on_invalid:
     message: string
 ```
 
 ---
 
-## Estrutura StateGuard
+## StateGuard structure
 
 ```yaml
 - description: string
-  query: string                   # SQL que retorna o estado atual
-  assert: map                     # condição que deve ser verdadeira
+  query: string                   # SQL that returns the current state
+  assert: map                     # condition that must hold true
   on_fail:
     message: string
-    suggest: string               # próxima ação sugerida
+    suggest: string                # suggested next action
 ```
 
 ---
 
-## Estrutura HumanConfirmation
+## HumanConfirmation structure
 
 ```yaml
 required: bool
-message_template: string          # mensagem com template {{campo}} mostrada antes de executar
-pending_status: int               # HTTP status code enquanto aguarda (ex: 202)
+message_template: string          # message with {{field}} template shown before executing
+pending_status: int                # HTTP status code while awaiting confirmation (e.g. 202)
 ```
 
 ---
 
-## Estrutura ComputedField
+## ComputedField structure
 
 ```yaml
 - name: string
-  formula: string                 # expressão aritmética com campos do input e queries
+  formula: string                 # arithmetic expression over input fields and queries
 ```
 
 ---
 
-## Estrutura SideEffect
+## SideEffect structure
 
 ```yaml
 - id: string
   description: string
-  trigger_if_field_present: string    # executa somente se campo estiver presente
-  trigger_if_field_changed: list      # executa somente se algum desses campos mudou
-  query: string                       # SQL executado como efeito colateral
-  action: string                      # nome de outra operação a disparar
-  params: map                         # parâmetros passados para a ação
-  alert_if: map                       # condição que gera alerta no signpost
+  trigger_if_field_present: string    # runs only if the field is present
+  trigger_if_field_changed: list       # runs only if one of these fields changed
+  query: string                        # SQL executed as a side effect
+  action: string                       # name of another operation to trigger
+  params: map                          # parameters passed to that action
+  alert_if: map                        # condition that produces an alert in the signpost
   message_template: string
-  dias_antes: int                     # para side effects de lembrete
+  dias_antes: int                      # for reminder-style side effects ("days before")
 ```
 
 ---
 
-## Estrutura Signpost
+## Signpost structure
 
 ```yaml
 success:
-  include: list[string]           # campos do resultado a incluir na resposta
-  message: string                 # mensagem fixa opcional
-  message_template: string        # mensagem com template {{campo}}
-  alerts: list[string]            # ids de side_effects cujos alertas devem aparecer
-  next_actions: list[string]      # operações que o agente pode fazer a seguir
+  include: list[string]           # result fields to include in the response
+  message: string                  # optional fixed message
+  message_template: string         # message with {{field}} template
+  alerts: list[string]             # side_effect ids whose alerts should surface
+  next_actions: list[string]       # operations the agent can do next
 
-pending:                          # para risk_level: confirmation antes da confirmação
+pending:                           # for risk_level: confirmation, before confirmation is given
   message_template: string
   include: list[string]
 
@@ -221,71 +221,71 @@ validation_error:
   include_errors: bool
   next_actions: list[string]
 
-blocked_transition:               # para risk_level: contextual
+blocked_transition:                # for risk_level: contextual
   message_template: string
 
-low_confidence:                   # para operações com OCR ou inferência
+low_confidence:                    # for operations involving OCR or inference
   message: string
   include: list[string]
 ```
 
 ---
 
-## Estrutura Audit
+## Audit structure
 
 ```yaml
 log: bool
-include_fields: list[string]      # campos a incluir no log de auditoria
+include_fields: list[string]      # fields to include in the audit log
 ```
 
 ---
 
-## Como o agente usa o schema
+## How the agent uses the schema
 
-1. **Recebe intenção** do humano em linguagem natural
-2. **Identifica a operação** pelo name ou description
-3. **Carrega o schema** da operação
-4. **Extrai campos** da intenção, inferindo do contexto quando `infer_from_context: true`
-5. **Valida campos** contra input_schema
-6. **Executa state_guards** — se falhar, retorna mensagem e para
-7. **Executa validation_rules** — se falhar, aplica política (block / warn / human_confirmation)
-8. **Verifica human_confirmation** — se risk_level == confirmation, pausa e aguarda
-9. **Executa a operação**
-10. **Executa side_effects**
-11. **Retorna signpost** com resultado, alertas e next_actions
+1. **Receives an intent** from the human in natural language
+2. **Identifies the operation** by its name or description
+3. **Loads the operation's schema**
+4. **Extracts fields** from the intent, inferring from context when `infer_from_context: true`
+5. **Validates fields** against `input_schema`
+6. **Runs `state_guards`** — if one fails, returns a message and stops
+7. **Runs `validation_rules`** — if one fails, applies its policy (block / warn / human_confirmation)
+8. **Checks `human_confirmation`** — if `risk_level == confirmation`, pauses and waits
+9. **Executes the operation**
+10. **Runs `side_effects`**
+11. **Returns a signpost** with the result, alerts, and `next_actions`
 
 ---
 
-## Mapa de compatibilidade com padrões existentes
+## Compatibility map with existing standards
 
-| Padrão | Relação com Agent-Ready Schema |
+| Standard | Relationship to Agent-Ready Schema |
 |--------|-------------------------------|
-| OpenAPI | Descreve estrutura de endpoints. ARS descreve semântica de operações. Complementares. |
-| MCP | Descobre ferramentas disponíveis. ARS governa o que cada ferramenta pode fazer. Complementares. |
-| JSON Schema | Valida estrutura de dados. ARS valida intenção + estado + risco. ARS inclui JSON Schema. |
-| XSD (NF-e) | Inspiração direta. ARS generaliza o conceito de schema-como-governança para qualquer operação. |
+| OpenAPI | Describes endpoint structure. ARS describes operation semantics. Complementary. |
+| MCP | Discovers available tools. ARS governs what each tool is allowed to do. Complementary. |
+| JSON Schema | Validates data structure. ARS validates intent + state + risk. ARS includes JSON Schema. |
+| XSD (NF-e) | Direct inspiration. ARS generalizes the schema-as-governance concept to any operation. |
 
 ---
 
-## Versionamento
+## Versioning
 
-O campo `schema_version` segue semver simplificado: `MAJOR.MINOR`
+The `schema_version` field follows a simplified semver: `MAJOR.MINOR`
 
-- `MAJOR` muda quando há quebra de compatibilidade
-- `MINOR` muda quando novos campos opcionais são adicionados
+- `MAJOR` changes on a breaking change
+- `MINOR` changes when new optional fields are added
 
-Versão atual: **0.1** (Draft — sujeito a mudanças)
+Current version: **0.1** (Draft — subject to change)
 
 ---
 
-## Implementações de referência
+## Reference implementations
 
-| Sistema | Repositório | Status |
+| System | Repository | Status |
 |---------|-------------|--------|
 | FamilyOS | /schemas/familyos/ | Experimental |
 
 ---
 
 *Agent-Ready Schema v0.1 — Diego / Orquestra AI — 2026*
-*Inspirado em: Felipe Amorim — "The A in API No Longer Means Application"*
-*Inspiração estrutural: XSD da NF-e brasileira*
+*Inspired by: Felipe Amorim — "The A in API No Longer Means Application"*
+*Structural inspiration: Brazil's NF-e XSD*

@@ -1,109 +1,119 @@
 # Agent-Ready Schema
 
-> Um padrão aberto para sistemas operáveis por agentes com autonomia segura.
+> An open standard for systems safely operable by autonomous AI agents.
 
 ---
 
-## O problema
+## The problem
 
-APIs foram sempre projetadas para humanos programarem.
-O agente é o primeiro consumidor que lê, interpreta e decide.
+APIs were always designed for humans to program against.
+The agent is the first consumer that reads, interprets, and decides.
 
-Mas leitura não é suficiente.
+But reading isn't enough.
 
-Hoje, quando um agente integra um sistema, a decisão de "o que pode fazer sozinho" vive no prompt — espalhada, frágil, não reutilizável, e refeita do zero a cada integração.
+Today, when an agent integrates a system, the decision of "what it can do on its own" lives in the prompt — scattered, fragile, not reusable, and rebuilt from scratch for every integration.
 
-**Agent-Ready Schema resolve isso colocando a governança no contrato do sistema, não no prompt do agente.**
+**Agent-Ready Schema fixes this by putting governance in the system's contract, not in the agent's prompt.**
 
 ---
 
-## A inspiração
+## The inspiration
 
-Este projeto parte de duas referências:
+This project draws on two references:
 
 1. **Felipe Amorim** — ["The A in API No Longer Means Application"](https://felipeamorim.dev/posts/the-a-in-api-no-longer-means-application/)
-   > *"Responses precisam virar signposts. O agente lê. Escreva para esse leitor."*
+   > *"Responses need to become signposts. The agent reads. Write for that reader."*
 
-2. **NF-e brasileira** — O schema XSD não é só validação técnica. É governança embutida no contrato. Qualquer sistema emite, qualquer sistema valida, sem entender a semântica por fora.
+2. **Brazil's NF-e (electronic tax invoice)** — its XSD schema isn't just technical validation. It's governance embedded in the contract. Any system can issue it, any system can validate it, without understanding the semantics from outside.
 
-Agent-Ready Schema generaliza esse modelo para qualquer operação de sistema.
+Agent-Ready Schema generalizes that model to any system operation.
 
 ---
 
-## O modelo
+## The model
 
-Cada operação expõe três camadas:
+Every operation exposes three layers:
 
 ```
-1. Esquema de operação
-   → campos, tipos, validações, contexto
+1. Operation schema
+   → fields, types, validations, context
 
-2. Classificação de risco
+2. Risk classification
    → FREE | VALIDATED | CONTEXTUAL | CONFIRMATION
 
-3. Resposta como signpost
-   → o que aconteceu + o que fazer a seguir
+3. Response as a signpost
+   → what happened + what to do next
 ```
 
-### Níveis de risco
+### Risk levels
 
-| Nível | Política | Quando usar |
-|-------|----------|-------------|
-| 🟢 FREE | Executa imediatamente | Leitura pura, nenhum estado modificado |
-| 🟡 VALIDATED | Valida antes de executar | Cria estado novo |
-| 🟠 CONTEXTUAL | Valida transição de estado | Modifica estado existente |
-| 🔴 CONFIRMATION | Exige confirmação explícita | Irreversível |
+| Level | Policy | When to use |
+|-------|--------|-------------|
+| 🟢 FREE | Executes immediately | Pure read, no state modified |
+| 🟡 VALIDATED | Validates before executing | Creates new state |
+| 🟠 CONTEXTUAL | Validates state transition | Modifies existing state |
+| 🔴 CONFIRMATION | Requires explicit confirmation | Irreversible |
 
 ---
 
-## Estrutura do repositório
+## Repository structure
 
 ```
-agent-ready-schema/
+agent-ready-core/                      # Monorepo root
 │
-├── spec/
-│   └── agent-ready-schema-v0.1.md     # Especificação formal do padrão
+├── packages/
+│   ├── core/                          # @agent-ready/core — runtime engine
+│   ├── cli/                           # @agent-ready/cli — ars validate/list/risk/test
+│   ├── adapter-sqlite/                # Resolve state guards against SQLite
+│   ├── adapter-rest/                  # Resolve predicates via HTTP
+│   └── adapter-mcp/                   # Bridge an ARS schema to MCP tools
 │
-├── schemas/
-│   └── familyos/
-│       ├── financeiro.yml             # Módulo financeiro (8 operações)
-│       └── outros_modulos.yml         # Tarefas, Veículos, Saúde, Datas, Cardápio
+├── apps/
+│   ├── docs/                          # Documentation site (Astro Starlight)
+│   └── playground/                    # Web schema editor (Svelte)
 │
-├── examples/
-│   └── intents.json                   # 10 intents de teste com resultados esperados
-│
-├── tests/
-│   └── baseline-vs-schema.md          # Template de validação Baseline vs Schema
+├── docs/
+│   ├── spec/
+│   │   └── agent-ready-schema-v0.1.md # Formal specification of the standard
+│   ├── schemas/familyos/
+│   │   ├── financeiro.yml             # Finance module (8 operations)
+│   │   └── outros_modulos.yml         # Tasks, Vehicles, Health, Dates, Menu
+│   ├── examples/
+│   │   └── intents.json               # 10 test intents with expected results
+│   └── tests/
+│       └── baseline-vs-schema.md      # Baseline vs schema validation template
 │
 └── README.md
 ```
 
 ---
 
-## Implementação de referência: FamilyOS
+## Reference implementation: FamilyOS
 
-FamilyOS é um sistema doméstico de gestão financeira e familiar operado via Telegram, com SQLite, Gemini Flash e Hermes AGT.
+FamilyOS is a household finance and family management system operated over Telegram, backed by SQLite, Gemini Flash, and Hermes AGT.
 
-Foi a primeira implementação experimental do Agent-Ready Schema.
+It was the first experimental implementation of Agent-Ready Schema.
 
-**18 operações mapeadas em 6 módulos:**
+**18 operations mapped across 6 modules:**
 
-| Módulo | Operações | Riscos |
-|--------|-----------|--------|
-| Financeiro | 8 | 2×🔴 3×🟡 2×🟠 1×🟢 |
-| Tarefas | 3 | 2×🟡 1×🟠 |
-| Veículos | 2 | 2×🟡 |
-| Saúde | 2 | 1×🟢 1×🟡 |
-| Datas | 1 | 1×🟡 |
-| Cardápio | 2 | 1×🟢 1×🟡 |
+| Module | Operations | Risk mix |
+|--------|-----------|----------|
+| Finance | 8 | 2×🔴 3×🟡 2×🟠 1×🟢 |
+| Tasks | 3 | 2×🟡 1×🟠 |
+| Vehicles | 2 | 2×🟡 |
+| Health | 2 | 1×🟢 1×🟡 |
+| Dates | 1 | 1×🟡 |
+| Menu | 2 | 1×🟢 1×🟡 |
+
+The finance module's field and operation names stay in Portuguese (`registrar_gasto`, `deletar_gasto`, ...) — it's a real, working schema pulled straight from FamilyOS, not a translated example. The standard itself is language-agnostic; only this particular reference implementation's domain vocabulary is Portuguese.
 
 ---
 
-## Exemplo de schema executável
+## Example executable schema
 
 ```yaml
 - id: OP-FIN-06
-  name: deletar_gasto
+  name: deletar_gasto            # "delete expense"
   risk_level: confirmation
   autonomy_policy: require_explicit_confirmation
 
@@ -111,17 +121,17 @@ Foi a primeira implementação experimental do Agent-Ready Schema.
     gasto_id:
       type: int
       required: true
-    confirmacao:
+    confirmacao:                 # "confirmation"
       type: string
-      must_contain: "CONFIRMAR"
+      must_contain: "CONFIRMAR"  # "CONFIRM"
 
   human_confirmation:
     required: true
-    message_template: "Isso vai remover: R${{valor}} em {{categoria}} em {{data}}. Responda CONFIRMAR para prosseguir."
+    message_template: "This will remove: R${{valor}} from {{categoria}} on {{data}}. Reply CONFIRMAR to proceed."
 
   signpost:
     pending:
-      message_template: "Aguardando confirmação para remover R${{valor}}."
+      message_template: "Waiting for confirmation to remove R${{valor}}."
     success:
       next_actions: [consulta_mes]
 ```
@@ -130,28 +140,33 @@ Foi a primeira implementação experimental do Agent-Ready Schema.
 
 ## Status
 
-| Componente | Status |
+| Component | Status |
 |------------|--------|
-| Especificação v0.1 | ✅ Draft |
-| Schemas FamilyOS | ✅ Completo |
-| Intents de teste | ✅ 10 casos |
-| Validação baseline vs schema | 🔄 Em andamento |
-| Biblioteca de validação Python/JS | 🗓 Planejado |
-| Mais sistemas de referência | 🗓 Planejado |
+| Specification v0.1 | ✅ Draft |
+| `@agent-ready/core` runtime | ✅ Shipped — 129 tests |
+| `@agent-ready/cli` | ✅ Shipped |
+| `adapter-sqlite` / `adapter-rest` | ✅ Shipped |
+| `adapter-mcp` — MCP bridge | ✅ Shipped |
+| FamilyOS schemas | ✅ Complete |
+| Test intents | ✅ 10 cases |
+| Baseline vs schema validation | 🔄 In progress |
+| Docs site / playground | 🔄 Early stage |
+| Python validation library | 🗓 Planned |
+| Additional reference systems | 🗓 Planned |
 
 ---
 
-## Próximos passos
+## Next steps
 
-- [ ] Executar validação baseline vs schema no FamilyOS
-- [ ] Publicar resultados em artigo técnico
-- [ ] Implementar biblioteca de validação (Python primeiro)
-- [ ] Adicionar segundo sistema de referência (Orquestra AI / EVOT Ecosystem)
-- [ ] Abrir para contribuições externas
+- [ ] Run baseline-vs-schema validation on FamilyOS
+- [ ] Publish results in a technical article
+- [ ] Add a Python validation library
+- [ ] Add a second reference system beyond FamilyOS
+- [ ] Open up for external contributions
 
 ---
 
-## Referências
+## References
 
 - Felipe Amorim — [The A in API No Longer Means Application](https://felipeamorim.dev/posts/the-a-in-api-no-longer-means-application/)
 - [NF-e — Manual de Orientação ao Contribuinte](https://www.nfe.fazenda.gov.br/portal/listaConteudo.aspx?tipoConteudo=Rnxas7pDhbY=)
@@ -161,4 +176,4 @@ Foi a primeira implementação experimental do Agent-Ready Schema.
 ---
 
 *Agent-Ready Schema v0.1 — Diego / Orquestra AI — 2026*
-*Baseado em ideia de Felipe Amorim. Inspiração estrutural: XSD da NF-e brasileira.*
+*Based on an idea by Felipe Amorim. Structural inspiration: Brazil's NF-e XSD.*

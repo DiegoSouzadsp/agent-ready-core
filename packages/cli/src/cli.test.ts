@@ -8,7 +8,7 @@ const execAsync = promisify(exec);
 // Path to the compiled CLI entry point
 const cliPath = path.resolve(__dirname, '../dist/index.js');
 // Test fixtures
-const goodSchema = path.resolve(__dirname, '../../../docs/financeiro.yml');
+const goodSchema = path.resolve(__dirname, '../../../docs/schemas/familyos/financeiro.yml');
 const badSchema = path.resolve(__dirname, '../../../docs/bad_schema.yml');
 
 // Helper to run the CLI command
