@@ -1,0 +1,143 @@
+schema_version: "0.1"
+module: tarefas
+system: familyos
+updated_at: "2026-06-12"
+
+operations:
+
+  - id: OP-TAR-01
+    name: criar_tarefa
+    description: Cria uma nova tarefa com responsável e prioridade
+    risk_level: validated
+    autonomy_policy: execute_after_validation
+
+    input_schema:
+      titulo:
+        type: string
+        required: true
+        min_length: 3
+      responsavel_id:
+        type: int
+        required: true
+        infer_from_context: true
+        foreign_key:
+          table: membros
+          filter:
+            ativo: true
+      prioridade:
+        type: enum
+        values: [baixa, media, alta]
+        required: false
+        default: media
+      data_vencimento:
+        type: date
+        required: false
+      descricao:
+        type: string
+        required: false
+      origem:
+        type: enum
+        values: [manual, gmail, hermes, calendar]
+        required: false
+        default: hermes
+
+    signpost:
+      success:
+        include: [tarefa_id, titulo, vencimento]
+        next_actions:
+          - criar_lembrete
+          - listar_tarefas
+
+    audit:
+      log: true
+      include_fields: [titulo, responsavel_id, origem]
+
+  - id: OP-TAR-02
+    name: criar_lembrete
+    description: Agenda um lembrete para ser enviado via Telegram pelo cron
+    risk_level: validated
+    autonomy_policy: execute_after_validation
+
+    input_schema:
+      membro_id:
+        type: int
+        required: true
+        infer_from_context: true
+        foreign_key:
+          table: membros
+      mensagem:
+        type: string
+        required: true
+      agendado_para:
+        type: datetime
+        required: true
+        must_be: future
+      tarefa_id:
+        type: int
+        required: false
+        foreign_key:
+          table: tarefas
+
+    validation_rules:
+      - id: no_duplicate
+        description: Não criar lembrete duplicado
+        query: "SELECT id FROM lembretes WHERE membro_id = :membro_id AND mensagem = :mensagem AND agendado_para = :agendado_para AND enviado = false"
+        assert_empty: true
+        on_fail:
+          message: "Já existe um lembrete idêntico agendado para este horário."
+
+    signpost:
+      success:
+        include: [lembrete_id, agendado_para]
+        message: "Lembrete agendado. O cron vai enviar no horário via Telegram."
+        next_actions:
+          - listar_lembretes
+
+    audit:
+      log: true
+      include_fields: [membro_id, agendado_para, tarefa_id]
+
+  - id: OP-TAR-03
+    name: atualizar_status_tarefa
+    description: Atualiza o status de uma tarefa respeitando transições válidas
+    risk_level: contextual
+    autonomy_policy: validate_state_then_execute
+
+    input_schema:
+      tarefa_id:
+        type: int
+        required: true
+        foreign_key:
+          table: tarefas
+      novo_status:
+        type: enum
+        values: [pendente, em_progresso, concluida, cancelada]
+        required: true
+      motivo:
+        type: string
+        required_if:
+          field: novo_status
+          value: cancelada
+
+    validation_rules:
+      - id: valid_transition
+        description: Validar transições de estado permitidas
+        transitions:
+          pendente: [em_progresso, concluida, cancelada]
+          em_progresso: [concluida, cancelada, pendente]
+          concluida: []
+          cancelada: []
+        on_invalid:
+          message: "Transição de {{status_atual}} para {{novo_status}} não é permitida."
+
+    signpost:
+      success:
+        include: [tarefa_titulo, status_anterior, status_atual]
+        next_actions:
+          - listar_tarefas
+      blocked_transition:
+        message_template: "Não é possível alterar uma tarefa {{status_atual}}."
+
+    audit:
+      log: true
+      include_fields: [tarefa_id, status_anterior, novo_status, motivo]

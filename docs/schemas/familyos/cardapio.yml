@@ -1,0 +1,70 @@
+schema_version: "0.1"
+module: cardapio
+system: familyos
+updated_at: "2026-06-12"
+
+operations:
+
+  - id: OP-CAR-01
+    name: consultar_cardapio
+    description: Consulta cardápio da semana
+    risk_level: free
+    autonomy_policy: execute_immediately
+
+    input_schema:
+      semana_inicio:
+        type: date
+        required: false
+        default: current_monday
+        description: "Segunda-feira da semana desejada (YYYY-MM-DD)"
+
+    signpost:
+      success:
+        include: [semana, refeicoes]
+        next_actions:
+          - registrar_cardapio
+          - gerar_lista_compras
+
+    audit:
+      log: false
+
+  - id: OP-CAR-02
+    name: gerar_lista_compras
+    description: Gera lista de compras baseada no cardápio da semana
+    risk_level: validated
+    autonomy_policy: execute_after_validation
+
+    input_schema:
+      semana_inicio:
+        type: date
+        required: false
+        default: current_monday
+
+    validation_rules:
+      - id: cardapio_exists
+        description: Deve existir cardápio para a semana
+        query: "SELECT COUNT(*) as total FROM cardapios WHERE semana_inicio = :semana_inicio"
+        assert:
+          total_gt: 0
+        on_fail:
+          message: "Não há cardápio cadastrado para a semana de {{semana_inicio}}. Cadastre o cardápio primeiro."
+          suggest: registrar_cardapio
+
+      - id: no_duplicate_list
+        description: Verificar se já existe lista para a semana
+        query: "SELECT COUNT(*) as total FROM lista_compras WHERE semana_inicio = :semana_inicio"
+        warn_if:
+          total_gt: 0
+        message: "Já existe uma lista para esta semana. Deseja sobrescrever?"
+        policy: human_confirmation
+
+    signpost:
+      success:
+        include: [total_itens, estimativa_total]
+        next_actions:
+          - marcar_comprado
+          - consultar_lista_compras
+
+    audit:
+      log: true
+      include_fields: [semana_inicio, total_itens]

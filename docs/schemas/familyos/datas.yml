@@ -1,0 +1,57 @@
+schema_version: "0.1"
+module: datas
+system: familyos
+updated_at: "2026-06-12"
+
+operations:
+
+  - id: OP-DAT-01
+    name: registrar_data_importante
+    description: Registra data importante com lembrete automático configurável
+    risk_level: validated
+    autonomy_policy: execute_after_validation
+
+    input_schema:
+      titulo:
+        type: string
+        required: true
+      data:
+        type: date
+        format: YYYY-MM-DD
+        required: true
+      tipo:
+        type: enum
+        values: [aniversario, casamento, renovacao, vencimento, feriado, escola, religioso, outro]
+        required: true
+      recorrente:
+        type: bool
+        required: false
+        default_by_tipo:
+          aniversario: true
+          casamento: true
+          default: false
+      membro_id:
+        type: int
+        required: false
+        foreign_key:
+          table: membros
+      dias_antecipar_lembrete:
+        type: int
+        required: false
+        default: 3
+        min: 0
+        max: 30
+      emoji:
+        type: string
+        required: false
+        max_length: 2
+
+    signpost:
+      success:
+        include: [titulo, data, recorrente, lembrete_configurado]
+        next_actions:
+          - listar_datas_importantes
+
+    audit:
+      log: true
+      include_fields: [titulo, data, tipo, membro_id]

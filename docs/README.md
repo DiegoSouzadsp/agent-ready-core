@@ -79,7 +79,11 @@ agent-ready-core/                      # Monorepo root
 │   │   └── agent-ready-schema-v0.1.md # Formal specification of the standard
 │   ├── schemas/familyos/
 │   │   ├── financeiro.yml             # Finance module (8 operations)
-│   │   └── outros_modulos.yml         # Tasks, Vehicles, Health, Dates, Menu
+│   │   ├── tarefas.yml                # Tasks (3 operations)
+│   │   ├── veiculos.yml               # Vehicles (2 operations)
+│   │   ├── saude.yml                  # Health (2 operations)
+│   │   ├── datas.yml                  # Important dates (1 operation)
+│   │   └── cardapio.yml               # Weekly menu (2 operations)
 │   ├── examples/
 │   │   └── intents.json               # 10 test intents with expected results
 │   └── tests/

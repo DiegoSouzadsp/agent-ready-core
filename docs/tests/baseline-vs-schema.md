@@ -12,7 +12,7 @@ Test intents are real Portuguese utterances from FamilyOS, a Portuguese-speaking
 This run does **not** use the production Hermes AGT agent (not accessible from this environment). Instead, each of the 10 intents was sent to two independent, freshly-spawned LLM agents with no prior exposure to this project or its conclusions — matching the spirit of "baseline vs schema" without the specific production system:
 
 - **Baseline agent**: given ONLY a flat list of function names, parameters, and one-line descriptions — no risk classification, no validation rules, no confirmation requirements. This mirrors what an agent sees from an unenriched tool list (a bare API/MCP description with no ARS layer).
-- **Schema agent**: given the real, current `input_schema`, `risk_level`, `human_confirmation_if`, and `validation_rules` for each operation, taken directly from `docs/schemas/familyos/financeiro.yml` and `docs/schemas/familyos/outros_modulos.yml`.
+- **Schema agent**: given the real, current `input_schema`, `risk_level`, `human_confirmation_if`, and `validation_rules` for each operation, taken directly from `docs/schemas/familyos/financeiro.yml` and (at the time of this run) `outros_modulos.yml` — since split into `tarefas.yml`/`veiculos.yml`/`saude.yml`/`datas.yml`/`cardapio.yml`, see the note on INT-008 below.
 
 Both agents answered all 10 intents in a single batched call (each intent scored independently), rather than 10 separate spawns — a reasonable efficiency trade-off, noted here rather than hidden.
 
@@ -117,7 +117,7 @@ Metrics evaluated per intent:
 
 **Expected:** `registrar_abastecimento`, computes `preco_litro` and `media_kml`, updates vehicle mileage
 
-**Note:** `docs/schemas/familyos/outros_modulos.yml` (where this operation is defined) is a multi-document YAML file, and `@agent-ready/core`'s loader currently does not support multi-document YAML — this mechanical check had to be run against a hand-extracted single-operation copy of the schema, not the committed file directly. Filed as a real, separate bug — see the open issue this run surfaced, not covered by this validation's original scope.
+**Note:** at the time this check ran, `registrar_abastecimento` lived in `docs/schemas/familyos/outros_modulos.yml`, a multi-document YAML file `@agent-ready/core`'s loader couldn't parse — this mechanical check had to be run against a hand-extracted single-operation copy of the schema, not the committed file directly. That file has since been split into `tarefas.yml`/`veiculos.yml`/`saude.yml`/`datas.yml`/`cardapio.yml` (one schema per file, matching `financeiro.yml`'s convention), fixing the underlying issue — `AgentReady.fromFiles()` now loads all 18 operations across all 6 modules cleanly.
 
 ---
 
@@ -171,7 +171,7 @@ The other real gap: on INT-006 and INT-009, Baseline proceeded past business rul
 
 - This is two LLM trials standing in for the real Hermes AGT, not a production run — a rerun against the actual agent, when accessible, would carry more weight for the article.
 - Sample size is 10 intents, one pass each, no repetition — not enough to claim a statistically stable rate, only enough to demonstrate the *mechanism* qualitatively with real examples.
-- INT-006 and INT-008's validation_rules/multi-op coverage exposed that `outros_modulos.yml` can't currently be loaded by `@agent-ready/core` as committed (multi-document YAML unsupported) — a real bug this validation surfaced as a side effect, tracked separately from this document's scope.
+- ~~INT-006 and INT-008's validation_rules/multi-op coverage exposed that `outros_modulos.yml` can't currently be loaded by `@agent-ready/core` as committed (multi-document YAML unsupported)~~ — fixed by splitting the file into one schema per module, matching `financeiro.yml`'s convention. See the repository structure in `docs/README.md`.
 
 ### Evidence for the article:
 

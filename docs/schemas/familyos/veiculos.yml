@@ -1,0 +1,132 @@
+schema_version: "0.1"
+module: veiculos
+system: familyos
+updated_at: "2026-06-12"
+
+operations:
+
+  - id: OP-VEI-01
+    name: registrar_abastecimento
+    description: Registra abastecimento de combustível com cálculo automático de média
+    risk_level: validated
+    autonomy_policy: execute_after_validation
+
+    input_schema:
+      veiculo_id:
+        type: int
+        required: true
+        foreign_key:
+          table: veiculos
+      litros:
+        type: decimal
+        required: true
+        gt: 0
+      valor_total:
+        type: decimal
+        required: true
+        gt: 0
+      km_atual:
+        type: decimal
+        required: true
+        gt: 0
+      tipo_combustivel:
+        type: enum
+        values: [gasolina, etanol, diesel, gnv]
+        required: true
+      posto:
+        type: string
+        required: false
+      data:
+        type: date
+        required: false
+        default: today
+
+    validation_rules:
+      - id: km_sequence
+        description: km_atual deve ser maior que o último km registrado
+        query: "SELECT MAX(km_atual) as ultimo_km FROM abastecimentos WHERE veiculo_id = :veiculo_id"
+        assert:
+          km_atual_gte: ultimo_km
+        on_fail:
+          message: "Km informado ({{km_atual}}) é menor que o último registrado ({{ultimo_km}}). Confirma?"
+
+    computed_fields:
+      - name: preco_litro
+        formula: "valor_total / litros"
+      - name: km_desde_ultimo
+        formula: "km_atual - ultimo_km"
+      - name: media_kml
+        formula: "km_desde_ultimo / litros"
+
+    side_effects:
+      - id: update_veiculo_km
+        description: Atualizar km_atual do veículo
+        query: "UPDATE veiculos SET km_atual = :km_atual WHERE id = :veiculo_id"
+
+    signpost:
+      success:
+        include: [preco_litro, media_kml, km_rodados_desde_ultimo, km_atualizado]
+        next_actions:
+          - registrar_manutencao
+          - consulta_veiculo
+
+    audit:
+      log: true
+      include_fields: [veiculo_id, litros, valor_total, km_atual]
+
+  - id: OP-VEI-02
+    name: registrar_manutencao
+    description: Registra manutenção realizada com criação automática de lembrete
+    risk_level: validated
+    autonomy_policy: execute_after_validation
+
+    input_schema:
+      veiculo_id:
+        type: int
+        required: true
+        foreign_key:
+          table: veiculos
+      tipo:
+        type: enum
+        values: [oleo, pneu, filtro, freio, revisao, ipva, licenciamento, seguro, outro]
+        required: true
+      custo:
+        type: decimal
+        required: true
+        gt: 0
+      data_realizada:
+        type: date
+        required: false
+        default: today
+      proxima_data:
+        type: date
+        required: false
+      proximo_km:
+        type: decimal
+        required: false
+      local:
+        type: string
+        required: false
+      descricao:
+        type: string
+        required: false
+
+    side_effects:
+      - id: auto_lembrete_proxima
+        description: Criar lembrete automático 7 dias antes da próxima manutenção
+        trigger_if_field_present: proxima_data
+        action: criar_lembrete
+        params:
+          dias_antes: 7
+          message_template: "Lembrete: {{tipo}} do {{veiculo}} prevista para {{proxima_data}}"
+
+    signpost:
+      success:
+        include: [manutencao_id, tipo, proxima_data]
+        alerts: [vencimentos_proximos]
+        next_actions:
+          - consulta_veiculo
+
+    audit:
+      log: true
+      include_fields: [veiculo_id, tipo, custo, data_realizada]

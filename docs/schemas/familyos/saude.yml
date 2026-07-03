@@ -1,0 +1,79 @@
+schema_version: "0.1"
+module: saude
+system: familyos
+updated_at: "2026-06-12"
+
+operations:
+
+  - id: OP-SAU-01
+    name: consultar_ficha_medica
+    description: Consulta ficha médica completa de um membro
+    risk_level: free
+    autonomy_policy: execute_immediately
+
+    input_schema:
+      membro_id:
+        type: int
+        required: true
+        foreign_key:
+          table: membros
+
+    signpost:
+      success:
+        include: [membro_nome, tipo_sanguineo, alergias, condicoes, plano_saude, medico_responsavel]
+        next_actions:
+          - atualizar_ficha_medica
+          - consultar_medicamentos
+          - consultar_vacinas
+
+    audit:
+      log: false
+
+  - id: OP-SAU-02
+    name: registrar_vacina
+    description: Registra vacina aplicada com lembrete automático para próxima dose
+    risk_level: validated
+    autonomy_policy: execute_after_validation
+
+    input_schema:
+      membro_id:
+        type: int
+        required: true
+        infer_from_context: true
+        foreign_key:
+          table: membros
+      nome:
+        type: string
+        required: true
+      data_aplicacao:
+        type: date
+        required: false
+        default: today
+      proxima_dose:
+        type: date
+        required: false
+      local:
+        type: string
+        required: false
+      lote:
+        type: string
+        required: false
+
+    side_effects:
+      - id: auto_lembrete_proxima_dose
+        description: Criar lembrete 30 dias antes da próxima dose
+        trigger_if_field_present: proxima_dose
+        action: criar_lembrete
+        params:
+          dias_antes: 30
+          message_template: "Lembrete: próxima dose de {{vacina}} em {{proxima_dose}}"
+
+    signpost:
+      success:
+        include: [vacina_nome, membro_nome, proxima_dose]
+        next_actions:
+          - consultar_vacinas
+
+    audit:
+      log: true
+      include_fields: [membro_id, nome, data_aplicacao, lote]
