@@ -1,0 +1,130 @@
+<svg width="1200" height="560" viewBox="0 0 1200 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="ars-transports-title ars-transports-desc">
+  <title id="ars-transports-title">Agent-Ready Schema is not coupled to MCP</title>
+  <desc id="ars-transports-desc">Diagram showing @agent-ready/core as a central governance engine (validate, risk, signpost) that can be wired into MCP via adapter-mcp, into a plain REST API by hand, or into any other integration — LangChain tools, OpenAI function calling, a Slack bot, a CLI, a gRPC handler — using the same two function calls regardless of transport.</desc>
+
+  <defs>
+    <style>
+      <![CDATA[
+      :root {
+        --bg: #F4F5F2;
+        --panel: #FFFFFF;
+        --ink: #171A1F;
+        --muted: #5B6470;
+        --line: #C7CBC3;
+        --accent: #1E8E85;
+        --accent-bg: #E4F3F1;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #12151B;
+          --panel: #171B22;
+          --ink: #E7E9EA;
+          --muted: #97A0AC;
+          --line: #2E333C;
+          --accent: #4FD1C5;
+          --accent-bg: #16302E;
+        }
+      }
+      svg { background: var(--bg); }
+      text { font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace; fill: var(--ink); }
+      .serif { font-family: ui-serif, "Iowan Old Style", Georgia, "Times New Roman", serif; }
+      .title { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
+      .subtitle { font-size: 13px; fill: var(--muted); font-style: italic; }
+      .hub-name { font-size: 17px; font-weight: 700; fill: var(--accent); }
+      .hub-fn { font-size: 12px; }
+      .hub-sub { font-size: 11px; fill: var(--muted); font-style: italic; }
+      .spoke-name { font-size: 14px; font-weight: 700; }
+      .spoke-pkg { font-size: 10.5px; fill: var(--muted); }
+      .code { font-size: 11.5px; }
+      .note { font-size: 10.5px; fill: var(--muted); font-style: italic; }
+      .panel-bg { fill: var(--panel); stroke: var(--line); stroke-width: 1; }
+      .hub-bg { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 1.5; }
+      .hairline { stroke: var(--line); stroke-width: 1.25; }
+      ]]>
+    </style>
+    <marker id="dot" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="6" markerHeight="6">
+      <circle cx="4" cy="4" r="3" fill="var(--accent)"></circle>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1200" height="560" fill="var(--bg)"></rect>
+
+  <!-- Header -->
+  <text x="40" y="42" class="title">Agent-Ready Schema is not coupled to MCP</text>
+  <text x="40" y="64" class="subtitle serif">The governance engine is two function calls. MCP is one place to plug them in — not the only one.</text>
+
+  <!-- Hub -->
+  <g transform="translate(430,90)">
+    <rect class="hub-bg" x="0" y="0" width="340" height="110" rx="3"></rect>
+    <text x="170" y="30" text-anchor="middle" class="hub-name">@agent-ready/core</text>
+    <text x="170" y="55" text-anchor="middle" class="hub-fn">op.validate(input) · op.signpost(type, data)</text>
+    <text x="170" y="75" text-anchor="middle" class="hub-sub">risk_level, human_confirmation_if, state_guards —</text>
+    <text x="170" y="90" text-anchor="middle" class="hub-sub">the only place these rules are defined or enforced</text>
+  </g>
+
+  <!-- connectors fanning down -->
+  <path d="M 600 200 L 600 230 L 220 230 L 220 260" fill="none" class="hairline" marker-end="url(#dot)"></path>
+  <path d="M 600 200 L 600 260" fill="none" class="hairline" marker-end="url(#dot)"></path>
+  <path d="M 600 200 L 600 230 L 980 230 L 980 260" fill="none" class="hairline" marker-end="url(#dot)"></path>
+
+  <!-- Spoke 1: MCP -->
+  <g transform="translate(40,260)">
+    <rect class="panel-bg" x="0" y="0" width="360" height="260" rx="2"></rect>
+    <rect x="0" y="0" width="360" height="4" fill="var(--accent)"></rect>
+    <text x="20" y="34" class="spoke-name">MCP</text>
+    <text x="20" y="52" class="spoke-pkg">@agent-ready/adapter-mcp</text>
+
+    <rect x="20" y="70" width="320" height="60" rx="2" fill="var(--accent-bg)"></rect>
+    <text x="32" y="92" class="code">registerArsTools(</text>
+    <text x="32" y="108" class="code">&#160;&#160;server, agent, executors</text>
+    <text x="32" y="124" class="code">)</text>
+
+    <text x="20" y="156" class="note">One call. The SDK's tool</text>
+    <text x="20" y="172" class="note">registration IS the wiring —</text>
+    <text x="20" y="188" class="note">risk shows up in list_tools()</text>
+    <text x="20" y="204" class="note">before the agent ever calls.</text>
+
+    <text x="20" y="236" class="spoke-pkg">→ see docs/assets/architecture.svg</text>
+  </g>
+
+  <!-- Spoke 2: REST -->
+  <g transform="translate(420,260)">
+    <rect class="panel-bg" x="0" y="0" width="360" height="260" rx="2"></rect>
+    <rect x="0" y="0" width="360" height="4" fill="var(--accent)"></rect>
+    <text x="20" y="34" class="spoke-name">Plain REST API</text>
+    <text x="20" y="52" class="spoke-pkg">no adapter package — hand-wired</text>
+
+    <rect x="20" y="70" width="320" height="105" rx="2" fill="var(--accent-bg)"></rect>
+    <text x="32" y="90" class="code">app.post('/api/:action', ...)</text>
+    <text x="32" y="108" class="code">&#160;&#160;const r = op.validate(input)</text>
+    <text x="32" y="126" class="code">&#160;&#160;if (!r.valid) return 400</text>
+    <text x="32" y="144" class="code">&#160;&#160;&#160;.json(op.signpost(...))</text>
+    <text x="32" y="162" class="code">&#160;&#160;// same gate, same signpost</text>
+
+    <text x="20" y="201" class="note">Nine lines total. Same validation,</text>
+    <text x="20" y="217" class="note">same confirmation gate, same</text>
+    <text x="20" y="233" class="note">teaching-error signpost as MCP.</text>
+  </g>
+
+  <!-- Spoke 3: Anything else -->
+  <g transform="translate(800,260)">
+    <rect class="panel-bg" x="0" y="0" width="360" height="260" rx="2"></rect>
+    <rect x="0" y="0" width="360" height="4" fill="var(--accent)"></rect>
+    <text x="20" y="34" class="spoke-name">Anything else</text>
+    <text x="20" y="52" class="spoke-pkg">any code that can call a function</text>
+
+    <rect x="20" y="70" width="320" height="105" rx="2" fill="var(--accent-bg)"></rect>
+    <text x="32" y="92" class="code">· LangChain custom tool</text>
+    <text x="32" y="112" class="code">· OpenAI function calling</text>
+    <text x="32" y="132" class="code">· Slack / Telegram bot handler</text>
+    <text x="32" y="152" class="code">· CLI script · gRPC handler</text>
+
+    <text x="20" y="201" class="note">Governance was never coupled</text>
+    <text x="20" y="217" class="note">to a transport. If it can call</text>
+    <text x="20" y="233" class="note">TypeScript, it can call these two.</text>
+  </g>
+
+  <!-- footer -->
+  <line x1="40" y1="540" x2="1160" y2="540" class="hairline" stroke-width="1"></line>
+  <text x="40" y="558" class="note">agent-ready-core — Orquestra AI — MIT</text>
+</svg>
