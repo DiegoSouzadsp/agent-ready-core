@@ -145,13 +145,13 @@ The finance module's field and operation names stay in Portuguese (`registrar_ga
 | Component | Status |
 |------------|--------|
 | Specification v0.1 | ✅ Draft |
-| `@agent-ready/core` runtime | ✅ Shipped — 129 tests |
+| `@agent-ready/core` runtime | ✅ Shipped — 138 tests |
 | `@agent-ready/cli` | ✅ Shipped |
 | `adapter-sqlite` / `adapter-rest` | ✅ Shipped |
 | `adapter-mcp` — MCP bridge | ✅ Shipped |
 | FamilyOS schemas | ✅ Complete |
 | Test intents | ✅ 10 cases |
-| Baseline vs schema validation | 🔄 In progress |
+| Baseline vs schema validation | ✅ Run — see `docs/tests/baseline-vs-schema.md` (two LLM trials standing in for production Hermes AGT) |
 | Docs site / playground | 🔄 Early stage |
 | Python validation library | 🗓 Planned |
 | Additional reference systems | 🗓 Planned |
