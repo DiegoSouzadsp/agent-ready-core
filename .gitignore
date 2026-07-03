@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+coverage/
+.env
+.env.local
+
+# internal strategy doc — not part of the public open-source project
+docs/implementation_plan.md

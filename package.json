@@ -1,56 +1,37 @@
 {
-  "name": "@agent-ready/core",
-  "version": "0.1.0",
-  "description": "Runtime engine for Agent-Ready Schema — validate inputs, assess risk, enforce autonomy policies, and generate signposts for AI agents.",
+  "name": "agent-ready",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Monorepo for Agent-Ready Schema — governance layer for AI agents",
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "exports": {
-    ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
-    }
-  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
+    "build": "npm run build --workspaces --if-present",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "tsc --noEmit",
-    "prepublishOnly": "npm run build"
+    "test:coverage": "vitest run --coverage",
+    "lint": "npm run lint --workspaces --if-present",
+    "clean": "npm run clean --workspaces --if-present"
   },
-  "keywords": [
-    "agent",
-    "ai",
-    "api",
-    "schema",
-    "validation",
-    "autonomy",
-    "signpost",
-    "risk",
-    "governance",
-    "llm"
-  ],
-  "author": "Diego Souza <DiegoSouzadsp>",
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "@vitest/coverage-v8": "^3.2.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.3"
+  },
+  "optionalDependencies": {
+    "lightningcss-win32-x64-msvc": "1.32.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "author": "Diego Souza <DiegoSouzadsp> (Orquestra AI)",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "https://github.com/DiegoSouzadsp/agent-ready-core.git"
-  },
-  "dependencies": {
-    "yaml": "^2.7.1"
-  },
-  "devDependencies": {
-    "typescript": "^5.8.3",
-    "vitest": "^3.2.3",
-    "@types/node": "^22.15.0"
-  },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
-  ],
-  "engines": {
-    "node": ">=18"
   }
 }
