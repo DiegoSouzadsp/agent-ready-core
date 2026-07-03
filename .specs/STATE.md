@@ -29,10 +29,10 @@
 ## Handoff
 
 - **Feature**: adapter-mcp — `.specs/features/adapter-mcp/`
-- **Phase / Task**: Specify complete (spec.md confirmed by Diego) — entering Design
-- **Completed**: Specify
-- **In-progress**: Design phase, about to write `design.md`
-- **Next step**: Write `design.md` (architecture, components, Zod mapping strategy), present for confirmation, then Tasks
+- **Phase / Task**: Execute complete (T1-T6 all committed) — ready for Verifier
+- **Completed**: Specify, Design, Tasks, Execute (T1 scaffold, T2 schema.ts, T3 pipeline.ts, T4 index.ts, T5 example, T6 integration gate + closeout)
+- **In-progress**: none — about to dispatch the Verifier sub-agent (mandatory, always-on step per implement.md step 10)
+- **Next step**: Dispatch Verifier; if PASS, feature is done — report to Diego. If gaps, route as fix tasks (bounded to 3 fix→re-verify iterations)
 - **Blockers**: none
-- **Uncommitted files**: `.specs/features/adapter-mcp/spec.md`, `.specs/STATE.md` (not yet committed to git — this is planning artifact, decide with Diego whether `.specs/` is tracked in the repo)
+- **Uncommitted files**: none for this feature (6 commits: `eef30e3` T1, `2e85adc` T2, `82a3072` T3, `9c4b977` T4, `4038f8a` T5, T6 pending this commit). Note: the rest of the monorepo (packages/core, packages/cli, packages/adapter-rest, packages/adapter-sqlite, apps/, and earlier repo-hygiene fixes from this session) remains uncommitted from before this feature started — untouched by adapter-mcp work, flagged separately to Diego.
 - **Branch**: master
