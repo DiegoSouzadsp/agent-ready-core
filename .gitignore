@@ -5,6 +5,7 @@ dist/
 coverage/
 .env
 .env.local
+*.tgz
 
 # internal strategy doc — not part of the public open-source project
 docs/implementation_plan.md
