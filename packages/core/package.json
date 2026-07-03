@@ -1,0 +1,43 @@
+{
+  "name": "@agent-ready/core",
+  "version": "0.1.0",
+  "description": "Runtime engine for Agent-Ready Schema — validate inputs, assess risk, enforce autonomy policies, and generate signposts for AI agents.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "agent", "ai", "api", "schema", "validation", "autonomy",
+    "signpost", "risk", "governance", "llm", "mcp", "agent-ready"
+  ],
+  "author": "Diego Souza <DiegoSouzadsp> (Orquestra AI)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DiegoSouzadsp/agent-ready-core.git",
+    "directory": "packages/core"
+  },
+  "dependencies": {
+    "yaml": "^2.7.1"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}
