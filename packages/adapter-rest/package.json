@@ -1,0 +1,26 @@
+{
+  "name": "@agent-ready/adapter-rest",
+  "version": "0.1.0",
+  "description": "REST API adapter for Agent-Ready Schema core",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "prepublishOnly": "npm run build"
+  },
+  "author": "Diego Souza <DiegoSouzadsp> (Orquestra AI)",
+  "license": "MIT",
+  "peerDependencies": {
+    "@agent-ready/core": "*"
+  },
+  "devDependencies": {
+    "@agent-ready/core": "*"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "name": "@agent-ready/adapter-sqlite",
+  "version": "0.1.0",
+  "description": "SQLite adapter for Agent-Ready Schema core",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "src", "package.json"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "prepublishOnly": "npm run build"
+  },
+  "author": "Diego Souza <DiegoSouzadsp> (Orquestra AI)",
+  "license": "MIT",
+  "peerDependencies": {
+    "@agent-ready/core": "*"
+  },
+  "devDependencies": {
+    "@agent-ready/core": "*",
+    "@types/better-sqlite3": "^7.6.11"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
