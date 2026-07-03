@@ -28,11 +28,11 @@
 
 ## Handoff
 
-- **Feature**: adapter-mcp — `.specs/features/adapter-mcp/`
-- **Phase / Task**: Execute complete (T1-T6 all committed) — ready for Verifier
-- **Completed**: Specify, Design, Tasks, Execute (T1 scaffold, T2 schema.ts, T3 pipeline.ts, T4 index.ts, T5 example, T6 integration gate + closeout)
-- **In-progress**: none — about to dispatch the Verifier sub-agent (mandatory, always-on step per implement.md step 10)
-- **Next step**: Dispatch Verifier; if PASS, feature is done — report to Diego. If gaps, route as fix tasks (bounded to 3 fix→re-verify iterations)
+- **Feature**: adapter-mcp — `.specs/features/adapter-mcp/` — **DONE**
+- **Phase / Task**: Complete. Verifier PASS on re-verify pass 1 (`.specs/features/adapter-mcp/validation.md`) — 129 tests, 3/3 discrimination-sensor mutations killed, 12/12 ACs verified.
+- **Completed**: Specify, Design, Tasks, Execute (T1-T6), Verify (initial FAIL — 1 surviving mutant + 1 spec-precision gap), Fix (1 commit), Re-verify (PASS)
+- **In-progress**: none
+- **Next step**: None for this feature. Open items for Diego to decide separately: (1) whether to commit the rest of the monorepo (core/cli/other adapters/apps/earlier hygiene fixes, all still uncommitted from before this feature), (2) npm publish + LICENSE file (flagged earlier in session, still unresolved), (3) whether `.specs/` should be tracked in git long-term.
 - **Blockers**: none
-- **Uncommitted files**: none for this feature (6 commits: `eef30e3` T1, `2e85adc` T2, `82a3072` T3, `9c4b977` T4, `4038f8a` T5, T6 pending this commit). Note: the rest of the monorepo (packages/core, packages/cli, packages/adapter-rest, packages/adapter-sqlite, apps/, and earlier repo-hygiene fixes from this session) remains uncommitted from before this feature started — untouched by adapter-mcp work, flagged separately to Diego.
+- **Uncommitted files**: none for this feature (8 commits total: `eef30e3` T1, `2e85adc` T2, `82a3072` T3, `9c4b977` T4, `4038f8a` T5, `c401a21` T6, `689eb64` fix). Rest of monorepo still uncommitted from before this feature — unrelated, untouched by adapter-mcp work.
 - **Branch**: master
