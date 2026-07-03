@@ -9,3 +9,6 @@ coverage/
 
 # internal strategy doc — not part of the public open-source project
 docs/implementation_plan.md
+
+# unpublished content drafts (posts, article) — not part of the public repo
+docs/drafts/
