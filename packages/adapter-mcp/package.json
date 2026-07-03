@@ -1,0 +1,32 @@
+{
+  "name": "@agent-ready/adapter-mcp",
+  "version": "0.1.0",
+  "description": "MCP (Model Context Protocol) bridge for Agent-Ready Schema core",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "src", "package.json"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "prepublishOnly": "npm run build"
+  },
+  "author": "Diego Souza <DiegoSouzadsp> (Orquestra AI)",
+  "license": "MIT",
+  "peerDependencies": {
+    "@agent-ready/core": "*",
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "dependencies": {
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@agent-ready/core": "*",
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
