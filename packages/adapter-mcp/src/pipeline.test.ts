@@ -38,6 +38,8 @@ describe('runOperation', () => {
     expect(result.isError).toBe(true);
     expect((result.structuredContent as any).type).toBe('validation_error');
     expect((result.structuredContent as any).errors[0].field).toBe('valor');
+    expect(result.content[0].text).toBe((result.structuredContent as any).guidance);
+    expect(result.content[0].text.length).toBeGreaterThan(0);
     expect(executor).not.toHaveBeenCalled();
   });
 

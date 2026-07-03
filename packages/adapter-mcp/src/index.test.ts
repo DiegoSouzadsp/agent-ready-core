@@ -83,6 +83,26 @@ describe('registerArsTools', () => {
     expect(executor).not.toHaveBeenCalled();
   });
 
+  it('wires each operation to its own executor by name — valid input invokes only the matching executor, not another operation\'s', async () => {
+    const agent = AgentReady.fromYAML(TWO_OP_SCHEMA);
+    const server = mockServer();
+    const registrarExecutor = vi.fn().mockResolvedValue({ gasto_id: 1 });
+    const deletarExecutor = vi.fn().mockResolvedValue({ deleted: true });
+
+    registerArsTools(server as any, agent, {
+      registrar_gasto: registrarExecutor,
+      deletar_gasto: deletarExecutor,
+    });
+
+    const [, , handler] = server.registerTool.mock.calls.find((call) => call[0] === 'registrar_gasto')!;
+    const result = await handler({ valor: 50 });
+
+    expect(result.isError).toBe(false);
+    expect(registrarExecutor).toHaveBeenCalledTimes(1);
+    expect(registrarExecutor).toHaveBeenCalledWith({ valor: 50 });
+    expect(deletarExecutor).not.toHaveBeenCalled();
+  });
+
   it('the registered handler for a risk_level:confirmation operation never invokes its executor', async () => {
     const agent = AgentReady.fromYAML(TWO_OP_SCHEMA);
     const server = mockServer();
