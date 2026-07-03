@@ -2,6 +2,8 @@
 
 > An open standard for systems safely operable by autonomous AI agents.
 
+![How an Agent-Ready Schema governs an MCP tool call — risk level and confirmation requirements travel inside the tool description itself, verifiable against real @agent-ready/adapter-mcp output](./assets/architecture.svg)
+
 ---
 
 ## The problem

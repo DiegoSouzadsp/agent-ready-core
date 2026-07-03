@@ -1,0 +1,170 @@
+<svg width="1200" height="820" viewBox="0 0 1200 820" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="ars-mcp-title ars-mcp-desc">
+  <title id="ars-mcp-title">How an Agent-Ready Schema governs an MCP tool call</title>
+  <desc id="ars-mcp-desc">Diagram showing that risk level and confirmation requirements are part of the tool description an MCP client receives from list_tools(), before it ever calls the tool — and showing the runtime pipeline that blocks confirmation-risk operations from executing.</desc>
+
+  <defs>
+    <style>
+      <![CDATA[
+      :root {
+        --bg: #F4F5F2;
+        --panel: #FFFFFF;
+        --ink: #171A1F;
+        --muted: #5B6470;
+        --line: #C7CBC3;
+        --accent: #1E8E85;
+        --risk-free: #2E9E68;
+        --risk-free-bg: #E4F3EA;
+        --risk-confirm: #B84440;
+        --risk-confirm-bg: #F7E4E3;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #12151B;
+          --panel: #171B22;
+          --ink: #E7E9EA;
+          --muted: #97A0AC;
+          --line: #2E333C;
+          --accent: #4FD1C5;
+          --risk-free: #3FB27F;
+          --risk-free-bg: #163325;
+          --risk-confirm: #E1726E;
+          --risk-confirm-bg: #3A1D1C;
+        }
+      }
+      svg { background: var(--bg); }
+      text { font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace; fill: var(--ink); }
+      .serif { font-family: ui-serif, "Iowan Old Style", Georgia, "Times New Roman", serif; }
+      .title { font-size: 23px; font-weight: 700; letter-spacing: -0.01em; }
+      .subtitle { font-size: 13.5px; fill: var(--muted); font-style: italic; }
+      .section-label { font-size: 11px; letter-spacing: 0.12em; fill: var(--accent); font-weight: 600; }
+      .card-name { font-size: 16px; font-weight: 700; }
+      .card-label { font-size: 10px; letter-spacing: 0.08em; fill: var(--muted); }
+      .card-text { font-size: 12.5px; }
+      .card-field { font-size: 12px; }
+      .mono-sm { font-size: 11px; fill: var(--muted); }
+      .node-label { font-size: 12px; font-weight: 600; }
+      .node-sub { font-size: 10px; fill: var(--muted); font-style: italic; }
+      .panel-bg { fill: var(--panel); stroke: var(--line); stroke-width: 1; }
+      .hairline { stroke: var(--line); stroke-width: 1; }
+      ]]>
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"></path>
+    </marker>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--risk-free)"></path>
+    </marker>
+    <marker id="arrowRed" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--risk-confirm)"></path>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="1200" height="820" fill="var(--bg)"></rect>
+
+  <!-- Header -->
+  <text x="40" y="44" class="title">Agent-Ready Schema × MCP — what actually gets sent</text>
+  <text x="40" y="67" class="subtitle serif">Risk and confirmation requirements travel inside the tool definition itself — an agent can see them before calling, not just discover them after.</text>
+
+  <!-- ============ SECTION 1 ============ -->
+  <text x="40" y="106" class="section-label">1 · WHAT list_tools() ACTUALLY RETURNS (real @agent-ready/adapter-mcp output)</text>
+
+  <!-- Card A: free-risk example -->
+  <g transform="translate(40,124)">
+    <rect class="panel-bg" x="0" y="0" width="550" height="220" rx="2"></rect>
+    <rect x="0" y="0" width="550" height="4" fill="var(--risk-free)"></rect>
+    <text x="20" y="34" class="card-name">consulta_mes</text>
+    <rect x="440" y="18" width="92" height="20" rx="2" fill="var(--risk-free-bg)"></rect>
+    <text x="486" y="32" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--risk-free)">risk: free</text>
+
+    <text x="20" y="58" class="card-label">DESCRIPTION (sent to the agent, verbatim)</text>
+    <text x="20" y="78" class="card-text serif">
+      <tspan x="20" dy="0">"[risk: free] Consulta resumo financeiro do</tspan>
+      <tspan x="20" dy="17">mês com breakdown por categoria"</tspan>
+    </text>
+
+    <text x="20" y="128" class="card-label">INPUT_SCHEMA</text>
+    <text x="20" y="147" class="card-field mono-sm">mes: int, ano: int — both optional</text>
+
+    <text x="20" y="176" class="card-label">ANNOTATIONS (MCP native hint)</text>
+    <text x="20" y="195" class="card-field" fill="var(--risk-free)">{ readOnlyHint: true }</text>
+    <text x="20" y="211" class="mono-sm" font-style="italic">→ safe to call without asking. No gate blocks this.</text>
+  </g>
+
+  <!-- Card B: confirmation-risk example -->
+  <g transform="translate(610,124)">
+    <rect class="panel-bg" x="0" y="0" width="550" height="220" rx="2"></rect>
+    <rect x="0" y="0" width="550" height="4" fill="var(--risk-confirm)"></rect>
+    <text x="20" y="34" class="card-name">deletar_gasto</text>
+    <rect x="410" y="18" width="122" height="20" rx="2" fill="var(--risk-confirm-bg)"></rect>
+    <text x="471" y="32" text-anchor="middle" font-size="10.5" font-weight="700" fill="var(--risk-confirm)">risk: confirmation</text>
+
+    <text x="20" y="58" class="card-label">DESCRIPTION (sent to the agent, verbatim)</text>
+    <text x="20" y="78" class="card-text serif">
+      <tspan x="20" dy="0">"[risk: confirmation] Remove um gasto</tspan>
+      <tspan x="20" dy="17">permanentemente — always requires explicit</tspan>
+      <tspan x="20" dy="17">human confirmation; this call returns a</tspan>
+      <tspan x="20" dy="17">pending response and never executes on its own."</tspan>
+    </text>
+
+    <text x="20" y="163" class="card-label">INPUT_SCHEMA</text>
+    <text x="20" y="182" class="card-field mono-sm">gasto_id: int, confirmacao: string</text>
+    <text x="20" y="199" class="card-field mono-sm">(confirmacao must contain "CONFIRMAR")</text>
+
+    <text x="330" y="163" class="card-label">ANNOTATIONS</text>
+    <text x="330" y="182" class="card-field" fill="var(--risk-confirm)">{ destructiveHint: true }</text>
+  </g>
+
+  <!-- connector down -->
+  <line x1="600" y1="354" x2="600" y2="392" class="hairline" marker-end="url(#arrow)"></line>
+  <text x="600" y="384" text-anchor="middle" class="node-sub">the agent reads both of these before deciding to call either one</text>
+
+  <!-- ============ SECTION 2 ============ -->
+  <text x="40" y="426" class="section-label">2 · RUNTIME CALL FLOW (what happens if the agent calls anyway)</text>
+
+  <!-- pipeline: laid out left-to-right and top-to-bottom only, no upward branches -->
+  <g transform="translate(40,450)">
+    <!-- Agent -->
+    <rect class="panel-bg" x="0" y="30" width="110" height="60" rx="2"></rect>
+    <text x="55" y="56" text-anchor="middle" class="node-label">Agent</text>
+    <text x="55" y="72" text-anchor="middle" class="node-sub">calls tool</text>
+    <line x1="110" y1="60" x2="160" y2="60" class="hairline" marker-end="url(#arrow)"></line>
+
+    <!-- validate -->
+    <rect class="panel-bg" x="160" y="30" width="110" height="60" rx="2"></rect>
+    <text x="215" y="56" text-anchor="middle" class="node-label">validate()</text>
+    <text x="215" y="72" text-anchor="middle" class="node-sub">core engine</text>
+    <line x1="270" y1="60" x2="320" y2="60" class="hairline" marker-end="url(#arrow)"></line>
+
+    <!-- decision diamond -->
+    <polygon points="380,0 440,60 380,120 320,60" class="panel-bg" stroke="var(--accent)" stroke-width="1.5"></polygon>
+    <text x="380" y="55" text-anchor="middle" class="node-label" font-size="10.5">needs human</text>
+    <text x="380" y="69" text-anchor="middle" class="node-label" font-size="10.5">confirmation?</text>
+
+    <!-- YES -> right, blocked -->
+    <line x1="440" y1="60" x2="490" y2="60" class="hairline" stroke="var(--risk-confirm)" marker-end="url(#arrowRed)"></line>
+    <text x="450" y="50" class="node-label" fill="var(--risk-confirm)" font-size="10.5">YES</text>
+    <rect x="490" y="25" width="280" height="70" rx="2" fill="var(--risk-confirm-bg)" stroke="var(--risk-confirm)" stroke-width="1"></rect>
+    <text x="506" y="49" class="node-label" fill="var(--risk-confirm)">executor is NEVER called</text>
+    <text x="506" y="67" class="node-sub">returns "pending" signpost — confirmation</text>
+    <text x="506" y="81" class="node-sub">happens outside this MCP call entirely</text>
+
+    <!-- NO -> down, executes -->
+    <line x1="380" y1="120" x2="380" y2="170" class="hairline" stroke="var(--risk-free)" marker-end="url(#arrowGreen)"></line>
+    <text x="388" y="150" class="node-label" fill="var(--risk-free)" font-size="10.5">NO</text>
+    <rect class="panel-bg" x="320" y="170" width="110" height="60" rx="2" stroke="var(--risk-free)"></rect>
+    <text x="375" y="196" text-anchor="middle" class="node-label">executor()</text>
+    <text x="375" y="212" text-anchor="middle" class="node-sub">your system</text>
+    <line x1="430" y1="200" x2="480" y2="200" class="hairline" marker-end="url(#arrow)"></line>
+    <rect class="panel-bg" x="480" y="170" width="140" height="60" rx="2"></rect>
+    <text x="550" y="196" text-anchor="middle" class="node-label">signpost()</text>
+    <text x="550" y="212" text-anchor="middle" class="node-sub">success + next steps</text>
+  </g>
+
+  <!-- footer note -->
+  <line x1="40" y1="720" x2="1160" y2="720" class="hairline"></line>
+  <text x="40" y="748" class="card-text serif">
+    <tspan x="40" dy="0">This isn't a diagram of intent — it's the literal output of </tspan><tspan font-weight="700" font-family="ui-monospace, monospace">operationToolDescription()</tspan><tspan> and </tspan><tspan font-weight="700" font-family="ui-monospace, monospace">operationToolAnnotations()</tspan><tspan> in</tspan>
+    <tspan x="40" dy="19"><tspan font-family="ui-monospace, monospace" font-weight="700">@agent-ready/adapter-mcp</tspan>, verified by 138 tests.</tspan>
+  </text>
+  <text x="40" y="800" class="mono-sm">agent-ready-core — Orquestra AI — MIT</text>
+</svg>
