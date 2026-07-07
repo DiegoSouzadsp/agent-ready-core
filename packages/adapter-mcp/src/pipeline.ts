@@ -18,11 +18,15 @@ function errorResult(text: string): McpToolResult {
 
 /**
  * Run the full ARS governance pipeline for one MCP tool call:
- * defaults → validate → confirmation gate → executor → signpost.
+ * defaults → validate → foreign keys → confirmation gate → executor → signpost.
  *
- * The executor is never called when validation fails or when
- * `needsHumanConfirmation` is true (risk_level: confirmation, or a
+ * The executor is never called when validation fails (field-level or FK) or
+ * when `needsHumanConfirmation` is true (risk_level: confirmation, or a
  * field-level human_confirmation_if trigger) — see AD-002 in .specs/STATE.md.
+ *
+ * FK validation runs only when the schema declares foreign_key fields AND the
+ * adapter registers the FK_PREDICATE ('entity.exists') resolver; otherwise it
+ * is a no-op, preserving pre-FK behavior.
  */
 export async function runOperation(
   op: OperationHandle,
@@ -35,6 +39,11 @@ export async function runOperation(
 
   if (!result.valid) {
     return toMcpResult(op.signpost('validation_error', { errors: result.errors }), true);
+  }
+
+  const fkErrors = await op.validateForeignKeys(input);
+  if (fkErrors.length > 0) {
+    return toMcpResult(op.signpost('validation_error', { errors: fkErrors }), true);
   }
 
   if (result.needsHumanConfirmation) {

@@ -38,15 +38,15 @@ function mockServer() {
 }
 
 describe('registerArsTools', () => {
-  it('registers one tool per operation, named after operation.name', () => {
+  it('registers one tool per operation, named after operation.name (plus the contract meta-tool)', () => {
     const agent = AgentReady.fromYAML(TWO_OP_SCHEMA);
     const server = mockServer();
 
     registerArsTools(server as any, agent, {});
 
-    expect(server.registerTool).toHaveBeenCalledTimes(2);
+    expect(server.registerTool).toHaveBeenCalledTimes(3);
     const registeredNames = server.registerTool.mock.calls.map((call) => call[0]);
-    expect(registeredNames.sort()).toEqual(['deletar_gasto', 'registrar_gasto']);
+    expect(registeredNames.sort()).toEqual(['deletar_gasto', 'get_operation_contract', 'registrar_gasto']);
   });
 
   it('passes a risk-tagged description and a Zod inputSchema in the tool config', () => {
@@ -128,5 +128,138 @@ describe('registerArsTools', () => {
 
     expect(executor).not.toHaveBeenCalled();
     expect(result.isError).toBe(false);
+  });
+});
+
+const FK_SCHEMA = `
+schema_version: "0.1"
+module: financeiro
+operations:
+  - id: OP-03
+    name: registrar_gasto_categorizado
+    description: Registra um gasto com categoria
+    risk_level: validated
+    autonomy_policy: execute_after_validation
+    input_schema:
+      valor:
+        type: decimal
+        required: true
+        gt: 0
+      categoria_id:
+        type: int
+        required: true
+        foreign_key:
+          table: categorias
+`;
+
+describe('registerArsTools — get_operation_contract meta-tool', () => {
+  it('registers the meta-tool by default, after the schema operations', () => {
+    const agent = AgentReady.fromYAML(TWO_OP_SCHEMA);
+    const server = mockServer();
+
+    registerArsTools(server as any, agent, {});
+
+    const registeredNames = server.registerTool.mock.calls.map((call) => call[0]);
+    expect(registeredNames).toContain('get_operation_contract');
+    expect(server.registerTool).toHaveBeenCalledTimes(3); // 2 ops + meta-tool
+  });
+
+  it('does not register the meta-tool when exposeContract is false', () => {
+    const agent = AgentReady.fromYAML(TWO_OP_SCHEMA);
+    const server = mockServer();
+
+    registerArsTools(server as any, agent, {}, { exposeContract: false });
+
+    const registeredNames = server.registerTool.mock.calls.map((call) => call[0]);
+    expect(registeredNames).not.toContain('get_operation_contract');
+  });
+
+  it('returns the full operation definition as JSON + structuredContent', async () => {
+    const agent = AgentReady.fromYAML(TWO_OP_SCHEMA);
+    const server = mockServer();
+
+    registerArsTools(server as any, agent, {});
+
+    const [, , handler] = server.registerTool.mock.calls.find(
+      (call) => call[0] === 'get_operation_contract',
+    )!;
+    const result = await handler({ operation: 'registrar_gasto' });
+
+    expect(result.isError).toBe(false);
+    expect(result.structuredContent.name).toBe('registrar_gasto');
+    expect(result.structuredContent.risk_level).toBe('validated');
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.input_schema.valor.gt).toBe(0);
+  });
+
+  it('teaches on unknown operation: isError with the list of available operations', async () => {
+    const agent = AgentReady.fromYAML(TWO_OP_SCHEMA);
+    const server = mockServer();
+
+    registerArsTools(server as any, agent, {});
+
+    const [, , handler] = server.registerTool.mock.calls.find(
+      (call) => call[0] === 'get_operation_contract',
+    )!;
+    const result = await handler({ operation: 'nao_existe' });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('registrar_gasto');
+    expect(result.content[0].text).toContain('deletar_gasto');
+  });
+});
+
+describe('registerArsTools — foreign_key validation in the pipeline', () => {
+  it('blocks the executor and returns validation_error when the FK row does not exist', async () => {
+    const agent = AgentReady.fromYAML(FK_SCHEMA, {
+      'entity.exists': () => false,
+    });
+    const server = mockServer();
+    const executor = vi.fn();
+
+    registerArsTools(server as any, agent, { registrar_gasto_categorizado: executor });
+
+    const [, , handler] = server.registerTool.mock.calls.find(
+      (call) => call[0] === 'registrar_gasto_categorizado',
+    )!;
+    const result = await handler({ valor: 50, categoria_id: 999 });
+
+    expect(result.isError).toBe(true);
+    expect(executor).not.toHaveBeenCalled();
+    expect(result.structuredContent.errors[0].code).toBe('FK_NOT_FOUND');
+  });
+
+  it('calls the executor when the FK row exists', async () => {
+    const agent = AgentReady.fromYAML(FK_SCHEMA, {
+      'entity.exists': () => true,
+    });
+    const server = mockServer();
+    const executor = vi.fn().mockResolvedValue({ gasto_id: 1 });
+
+    registerArsTools(server as any, agent, { registrar_gasto_categorizado: executor });
+
+    const [, , handler] = server.registerTool.mock.calls.find(
+      (call) => call[0] === 'registrar_gasto_categorizado',
+    )!;
+    const result = await handler({ valor: 50, categoria_id: 15 });
+
+    expect(result.isError).toBe(false);
+    expect(executor).toHaveBeenCalledWith({ valor: 50, categoria_id: 15 });
+  });
+
+  it('keeps pre-FK behavior when no entity.exists resolver is registered', async () => {
+    const agent = AgentReady.fromYAML(FK_SCHEMA); // no resolvers
+    const server = mockServer();
+    const executor = vi.fn().mockResolvedValue({ gasto_id: 1 });
+
+    registerArsTools(server as any, agent, { registrar_gasto_categorizado: executor });
+
+    const [, , handler] = server.registerTool.mock.calls.find(
+      (call) => call[0] === 'registrar_gasto_categorizado',
+    )!;
+    const result = await handler({ valor: 50, categoria_id: 999 });
+
+    expect(result.isError).toBe(false);
+    expect(executor).toHaveBeenCalledTimes(1);
   });
 });
