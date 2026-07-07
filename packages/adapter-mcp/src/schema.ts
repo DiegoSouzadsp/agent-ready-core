@@ -40,10 +40,65 @@ function fieldTypeToZod(field: InputField): z.ZodTypeAny {
 }
 
 /**
+ * Build the constraint summary ("bula") of one field, exposed to the agent via
+ * the field's MCP-visible description. Constraints are deliberately NOT encoded
+ * in the Zod schema (see fieldTypeToZod) so violations surface as ARS
+ * `validation_error` signposts instead of protocol errors — this summary is how
+ * the agent learns the rules BEFORE calling, rather than by being corrected.
+ */
+export function fieldConstraintSummary(field: InputField): string {
+  const parts: string[] = [];
+
+  if (field.required) parts.push('required');
+  if (field.required_if) {
+    parts.push(
+      `required when ${field.required_if.field} = ${JSON.stringify(field.required_if.value)}`,
+    );
+  }
+  if (field.format) parts.push(`format ${field.format}`);
+  if (field.min !== undefined) parts.push(`min ${field.min}`);
+  if (field.max !== undefined) parts.push(`max ${field.max}`);
+  if (field.gt !== undefined) parts.push(`must be > ${field.gt}`);
+  if (field.gte !== undefined) parts.push(`must be >= ${field.gte}`);
+  if (field.min_length !== undefined) parts.push(`min length ${field.min_length}`);
+  if (field.max_length !== undefined) parts.push(`max length ${field.max_length}`);
+  if (field.must_be) parts.push(`must be a ${field.must_be} date`);
+  if (field.must_contain) parts.push(`must contain "${field.must_contain}"`);
+  if (field.default !== undefined) parts.push(`default ${JSON.stringify(field.default)}`);
+  if (field.infer_from_context) parts.push('inferred from context when omitted');
+  if (field.foreign_key) {
+    const { table, filter } = field.foreign_key;
+    const filterDesc = filter
+      ? ` where ${Object.entries(filter)
+          .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
+          .join(', ')}`
+      : '';
+    parts.push(`must reference an existing row in "${table}"${filterDesc}`);
+  }
+  if (field.human_confirmation_if) {
+    const c = field.human_confirmation_if;
+    const conds: string[] = [];
+    if (c.gt !== undefined) conds.push(`> ${c.gt}`);
+    if (c.gte !== undefined) conds.push(`>= ${c.gte}`);
+    if (c.lt !== undefined) conds.push(`< ${c.lt}`);
+    if (c.lte !== undefined) conds.push(`<= ${c.lte}`);
+    if (c.eq !== undefined) conds.push(`= ${JSON.stringify(c.eq)}`);
+    if (conds.length > 0) {
+      parts.push(`triggers human confirmation if value ${conds.join(' or ')}`);
+    }
+  }
+
+  return parts.join('; ');
+}
+
+/**
  * Convert normalized ARS input fields into a raw Zod shape suitable for
  * @modelcontextprotocol/sdk's `registerTool` `inputSchema` (`ZodRawShapeCompat` —
  * confirmed against the installed SDK's `.d.ts`: a plain `Record<string, ZodType>`,
  * not a wrapped `z.object(...)`).
+ *
+ * Each field's description carries its full constraint summary (`[rules: ...]`)
+ * so the agent knows how to fill the field before the first call.
  */
 export function inputFieldsToZodShape(fields: InputField[]): Record<string, z.ZodTypeAny> {
   const shape: Record<string, z.ZodTypeAny> = {};
@@ -51,8 +106,12 @@ export function inputFieldsToZodShape(fields: InputField[]): Record<string, z.Zo
   for (const field of fields) {
     let zodType = fieldTypeToZod(field);
 
-    if (field.description) {
-      zodType = zodType.describe(field.description);
+    const summary = fieldConstraintSummary(field);
+    const description = [field.description, summary ? `[rules: ${summary}]` : '']
+      .filter(Boolean)
+      .join(' ');
+    if (description) {
+      zodType = zodType.describe(description);
     }
     if (!field.required) {
       zodType = zodType.optional();

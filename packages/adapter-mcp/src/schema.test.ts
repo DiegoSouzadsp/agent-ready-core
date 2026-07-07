@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { InputField, Operation } from '@agent-ready/core';
 import {
+  fieldConstraintSummary,
   inputFieldsToZodShape,
   operationInputSchema,
   operationToolDescription,
@@ -91,11 +92,11 @@ describe('inputFieldsToZodShape', () => {
     expect(shape.conta.safeParse(undefined).success).toBe(true);
   });
 
-  it('attaches field.description via .describe()', () => {
+  it('attaches field.description via .describe(), enriched with the [rules: ...] summary', () => {
     const shape = inputFieldsToZodShape([
       field({ name: 'valor', type: 'decimal', required: true, description: 'Valor do gasto em reais' }),
     ]);
-    expect(shape.valor.description).toBe('Valor do gasto em reais');
+    expect(shape.valor.description).toBe('Valor do gasto em reais [rules: required]');
   });
 
   it('does not enforce gt/gte/min/max/min_length/max_length at the Zod layer (Tech Decision)', () => {
@@ -211,5 +212,92 @@ describe('operationToolAnnotations', () => {
   it('returns undefined for risk_level:validated and risk_level:contextual (no single hint fits)', () => {
     expect(operationToolAnnotations(op('validated'))).toBeUndefined();
     expect(operationToolAnnotations(op('contextual'))).toBeUndefined();
+  });
+});
+
+describe('fieldConstraintSummary', () => {
+  it('returns empty string for a bare field', () => {
+    expect(fieldConstraintSummary(field({ name: 'obs', type: 'string' }))).toBe('');
+  });
+
+  it('summarizes numeric and length constraints', () => {
+    const summary = fieldConstraintSummary(
+      field({ name: 'valor', type: 'decimal', required: true, gt: 0, max: 10000 }),
+    );
+    expect(summary).toContain('required');
+    expect(summary).toContain('must be > 0');
+    expect(summary).toContain('max 10000');
+  });
+
+  it('summarizes format, default and required_if', () => {
+    const summary = fieldConstraintSummary(
+      field({
+        name: 'data',
+        type: 'date',
+        format: 'YYYY-MM-DD',
+        default: 'today',
+        required_if: { field: 'reembolso', value: true },
+      }),
+    );
+    expect(summary).toContain('format YYYY-MM-DD');
+    expect(summary).toContain('default "today"');
+    expect(summary).toContain('required when reembolso = true');
+  });
+
+  it('summarizes foreign_key with table and filter', () => {
+    const summary = fieldConstraintSummary(
+      field({
+        name: 'categoria_id',
+        type: 'int',
+        foreign_key: { table: 'categorias', filter: { ativo: true } },
+      }),
+    );
+    expect(summary).toContain('must reference an existing row in "categorias"');
+    expect(summary).toContain('ativo=true');
+  });
+
+  it('summarizes human_confirmation_if conditions', () => {
+    const summary = fieldConstraintSummary(
+      field({ name: 'valor', type: 'decimal', human_confirmation_if: { gt: 500 } }),
+    );
+    expect(summary).toContain('triggers human confirmation if value > 500');
+  });
+});
+
+describe('inputFieldsToZodShape — enriched descriptions', () => {
+  it('appends the [rules: ...] summary to the field description', () => {
+    const shape = inputFieldsToZodShape([
+      field({
+        name: 'valor',
+        type: 'decimal',
+        required: true,
+        gt: 0,
+        description: 'Valor do gasto em reais',
+      }),
+    ]);
+    expect(shape.valor.description).toBe('Valor do gasto em reais [rules: required; must be > 0]');
+  });
+
+  it('uses only the [rules: ...] summary when the field has no description', () => {
+    const shape = inputFieldsToZodShape([
+      field({ name: 'valor', type: 'decimal', required: true, gt: 0 }),
+    ]);
+    expect(shape.valor.description).toBe('[rules: required; must be > 0]');
+  });
+
+  it('keeps the plain description when there are no constraints', () => {
+    const shape = inputFieldsToZodShape([
+      field({ name: 'obs', type: 'string', description: 'Observações livres' }),
+    ]);
+    expect(shape.obs.description).toBe('Observações livres');
+  });
+
+  it('does not encode constraints into Zod validation (stays protocol-safe)', () => {
+    const shape = inputFieldsToZodShape([
+      field({ name: 'valor', type: 'decimal', required: true, gt: 0 }),
+    ]);
+    // -5 violates gt:0 but must still pass Zod — ARS validateInput() rejects it
+    // later with a proper validation_error signpost.
+    expect(shape.valor.safeParse(-5).success).toBe(true);
   });
 });
