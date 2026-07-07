@@ -42,7 +42,7 @@ import {
   listOperations,
   getInputFields,
 } from './loader.js';
-import { validateInput, applyDefaults } from './validator.js';
+import { validateInput, applyDefaults, validateForeignKeys } from './validator.js';
 import { generateSignpost } from './signpost.js';
 import { assessRisk, getRiskLabel, getRiskMatrix } from './risk.js';
 import { createAdapter, noopAdapter } from './adapter.js';
@@ -53,6 +53,7 @@ import type {
   SignpostResult,
   AdapterResolvers,
   RiskLevel,
+  FieldError,
 } from './types.js';
 import type { Adapter } from './adapter.js';
 import type { RiskAssessment } from './risk.js';
@@ -166,6 +167,18 @@ export class OperationHandle {
    */
   async resolveGuard(predicateName: string, params: Record<string, unknown> = {}): Promise<unknown> {
     return this._adapter.resolve(predicateName, params);
+  }
+
+  /**
+   * Validate foreign_key constraints via the adapter's FK_PREDICATE
+   * ('entity.exists') resolver. Complements validate(), which is synchronous
+   * and never touches the backend. Returns [] when the adapter has no
+   * FK_PREDICATE resolver.
+   *
+   * @param input - Input (after applyDefaults)
+   */
+  async validateForeignKeys(input: Record<string, unknown>): Promise<FieldError[]> {
+    return validateForeignKeys(this._operation, input, this._adapter);
   }
 }
 

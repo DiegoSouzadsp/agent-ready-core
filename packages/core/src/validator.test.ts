@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { validateInput, applyDefaults } from '../src/validator.js';
+import { validateInput, applyDefaults, validateForeignKeys, FK_PREDICATE } from '../src/validator.js';
+import { createAdapter, noopAdapter } from '../src/adapter.js';
 import type { Operation } from '../src/types.js';
 
 // ─────────────────────────────────────────────
@@ -382,5 +383,99 @@ describe('applyDefaults', () => {
     });
     expect(result.reembolso).toBe(true);
     expect(result.membro_id).toBe(99);
+  });
+});
+
+// ─────────────────────────────────────────────
+// validateForeignKeys
+// ─────────────────────────────────────────────
+
+describe('validateForeignKeys', () => {
+  const fkOp: Operation = {
+    id: 'OP-TEST-02',
+    name: 'registrar_gasto_fk',
+    risk_level: 'validated',
+    autonomy_policy: 'execute_after_validation',
+    input_schema: {
+      categoria_id: {
+        type: 'int',
+        required: true,
+        foreign_key: { table: 'categorias', filter: { ativo: true } },
+      },
+      membro_id: {
+        type: 'int',
+        required: false,
+        foreign_key: { table: 'membros' },
+      },
+      descricao: { type: 'string', required: true },
+    },
+  };
+
+  it('returns no errors when the adapter has no entity.exists resolver', async () => {
+    const errors = await validateForeignKeys(fkOp, { categoria_id: 999 }, noopAdapter());
+    expect(errors).toEqual([]);
+  });
+
+  it('returns FK_NOT_FOUND when the resolver reports the row does not exist', async () => {
+    const adapter = createAdapter({
+      [FK_PREDICATE]: () => false,
+    });
+    const errors = await validateForeignKeys(fkOp, { categoria_id: 999, descricao: 'x' }, adapter);
+    expect(errors).toHaveLength(1);
+    expect(errors[0].field).toBe('categoria_id');
+    expect(errors[0].code).toBe('FK_NOT_FOUND');
+  });
+
+  it('returns no errors when the resolver confirms the row exists', async () => {
+    const adapter = createAdapter({
+      [FK_PREDICATE]: () => true,
+    });
+    const errors = await validateForeignKeys(fkOp, { categoria_id: 15, descricao: 'x' }, adapter);
+    expect(errors).toEqual([]);
+  });
+
+  it('passes table, value, field name and filter to the resolver', async () => {
+    const seen: Record<string, unknown>[] = [];
+    const adapter = createAdapter({
+      [FK_PREDICATE]: (params) => {
+        seen.push(params);
+        return true;
+      },
+    });
+    await validateForeignKeys(fkOp, { categoria_id: 15 }, adapter);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toEqual({
+      table: 'categorias',
+      value: 15,
+      field: 'categoria_id',
+      filter: { ativo: true },
+    });
+  });
+
+  it('skips absent optional FK fields and non-FK fields', async () => {
+    const resolver = { calls: 0 };
+    const adapter = createAdapter({
+      [FK_PREDICATE]: () => {
+        resolver.calls += 1;
+        return false;
+      },
+    });
+    // membro_id absent, descricao has no FK — only categoria_id checked
+    const errors = await validateForeignKeys(fkOp, { categoria_id: 1, descricao: 'x' }, adapter);
+    expect(resolver.calls).toBe(1);
+    expect(errors).toHaveLength(1);
+  });
+
+  it('checks every present FK field independently', async () => {
+    const adapter = createAdapter({
+      [FK_PREDICATE]: ({ table }) => table === 'categorias', // membros always missing
+    });
+    const errors = await validateForeignKeys(
+      fkOp,
+      { categoria_id: 1, membro_id: 7, descricao: 'x' },
+      adapter,
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0].field).toBe('membro_id');
   });
 });

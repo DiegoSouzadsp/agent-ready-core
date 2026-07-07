@@ -4,6 +4,7 @@ import type {
   ValidationResult,
   FieldError,
 } from './types.js';
+import type { Adapter } from './adapter.js';
 import { getInputFields } from './loader.js';
 
 // ─────────────────────────────────────────────
@@ -330,4 +331,62 @@ export function validateInput(
     riskLevel: operation.risk_level,
     autonomyPolicy: operation.autonomy_policy,
   };
+}
+
+// ─────────────────────────────────────────────
+// Foreign Key Validation (async — needs a backend)
+// ─────────────────────────────────────────────
+
+/**
+ * Predicate name an adapter must register to enable foreign_key validation.
+ * Receives { table, value, field, filter } and returns truthy when a matching
+ * row exists in the backend.
+ */
+export const FK_PREDICATE = 'entity.exists';
+
+/**
+ * Validate foreign_key constraints against a real backend via the adapter.
+ *
+ * Kept separate from validateInput() so the core validator stays synchronous
+ * and pure — FK checks need I/O. Skips silently (non-breaking) when:
+ * - the adapter has no FK_PREDICATE resolver
+ * - a field has no foreign_key
+ * - the field's value is absent (required-ness is validateInput's job)
+ *
+ * @param operation - The operation definition
+ * @param input - Input after applyDefaults()
+ * @param adapter - Adapter with an 'entity.exists' resolver
+ */
+export async function validateForeignKeys(
+  operation: Operation,
+  input: Record<string, unknown>,
+  adapter: Adapter,
+): Promise<FieldError[]> {
+  const errors: FieldError[] = [];
+  if (!adapter.has(FK_PREDICATE)) return errors;
+
+  for (const field of getInputFields(operation)) {
+    const name = field.name!;
+    const value = input[name];
+    if (!field.foreign_key || !isPresent(value)) continue;
+
+    const { table, filter } = field.foreign_key;
+    const exists = await adapter.resolve(FK_PREDICATE, {
+      table,
+      value,
+      field: name,
+      filter,
+    });
+    if (!exists) {
+      errors.push(
+        fieldError(
+          name,
+          'FK_NOT_FOUND',
+          `Field "${name}" references table "${table}" but no matching row was found for value "${value}"`,
+        ),
+      );
+    }
+  }
+
+  return errors;
 }
