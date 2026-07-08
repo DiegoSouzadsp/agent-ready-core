@@ -105,6 +105,9 @@ export function buildExecutor(
     if (actingUser) {
       headers[actingUserHeader] = actingUser;
     }
+    for (const [key, value] of Object.entries(manifest.auth?.extra_headers ?? {})) {
+      if (value) headers[key] = value;
+    }
     if (spec.headers) {
       for (const [key, template] of Object.entries(spec.headers)) {
         headers[key] = renderTemplate(template, input);

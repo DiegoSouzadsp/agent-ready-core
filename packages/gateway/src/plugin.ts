@@ -12,6 +12,12 @@ export interface PluginAuth {
   service_token?: string;
   /** Header carrying the acting user's identity. Defaults to 'X-Acting-User' when omitted. */
   acting_user_header?: string;
+  /**
+   * Static headers sent on EVERY outbound call (e.g. X-Tenant-Slug for a
+   * single-tenant deployment). Values support ${ENV} substitution via
+   * plugin.yml; empty values are skipped.
+   */
+  extra_headers?: Record<string, string>;
 }
 
 /** `plugin.yml` — the manifest at the root of a plugin directory. */
