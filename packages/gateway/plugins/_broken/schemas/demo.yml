@@ -1,0 +1,12 @@
+schema_version: "0.1"
+module: demo
+operations:
+  - id: DEMO-01
+    name: listar_itens
+    description: Lista itens do catálogo
+    risk_level: free
+    autonomy_policy: execute_immediately
+    input_schema:
+      busca:
+        type: string
+        required: false

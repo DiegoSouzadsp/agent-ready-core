@@ -1,0 +1,10 @@
+listar_itens:
+  method: GET
+  path: /api/items
+  query:
+    q: "{{busca}}"
+    limit: "{{limite}}"
+criar_item:
+  method: POST
+  path: /api/items
+  body_from_input: true

@@ -1,0 +1,32 @@
+schema_version: "0.1"
+module: demo
+operations:
+  - id: DEMO-01
+    name: listar_itens
+    description: Lista itens do catálogo
+    risk_level: free
+    autonomy_policy: execute_immediately
+    input_schema:
+      busca:
+        type: string
+        required: false
+      limite:
+        type: int
+        required: false
+        gte: 1
+  - id: DEMO-02
+    name: criar_item
+    description: Cria um novo item
+    risk_level: confirmation
+    autonomy_policy: require_explicit_confirmation
+    input_schema:
+      nome:
+        type: string
+        required: true
+        min_length: 2
+      valor:
+        type: decimal
+        required: true
+        gt: 0
+    human_confirmation:
+      required: true

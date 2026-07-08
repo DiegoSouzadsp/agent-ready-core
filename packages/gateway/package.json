@@ -1,0 +1,34 @@
+{
+  "name": "@agent-ready/gateway",
+  "version": "0.1.0",
+  "description": "Generic ARS gateway engine — serves any system as MCP tools from a declarative plugin directory (schemas + executors), no per-system code",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "src", "package.json"],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "lint": "tsc --noEmit",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "prepublishOnly": "npm run build"
+  },
+  "author": "Diego Souza <DiegoSouzadsp> (Orquestra AI)",
+  "license": "MIT",
+  "peerDependencies": {
+    "@agent-ready/adapter-mcp": "*",
+    "@agent-ready/core": "*",
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "dependencies": {
+    "yaml": "^2.7.1"
+  },
+  "devDependencies": {
+    "@agent-ready/adapter-mcp": "*",
+    "@agent-ready/core": "*",
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
