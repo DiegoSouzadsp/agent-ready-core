@@ -9,3 +9,4 @@
 export * from './plugin.js';
 export * from './executors.js';
 export * from './server.js';
+export * from './http.js';

@@ -5,6 +5,9 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "bin": {
+    "ars-gateway": "./dist/bin.js"
+  },
   "files": ["dist", "src", "package.json"],
   "scripts": {
     "build": "tsc",
