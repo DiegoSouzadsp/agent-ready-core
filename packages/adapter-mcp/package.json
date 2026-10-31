@@ -15,6 +15,11 @@
   },
   "author": "Diego Souza <DiegoSouzadsp> (Orquestra AI)",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/DiegoSouzadsp/agent-ready-core.git",
+    "directory": "packages/adapter-mcp"
+  },
   "peerDependencies": {
     "@agent-ready/core": "*",
     "@modelcontextprotocol/sdk": "^1.0.0"
