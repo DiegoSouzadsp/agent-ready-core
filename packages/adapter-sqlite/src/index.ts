@@ -20,7 +20,22 @@ export function createSqliteResolvers(
   db: Database,
   config: SqliteResolverConfig
 ): AdapterResolvers {
-  const resolvers: AdapterResolvers = {};
+  const resolvers: AdapterResolvers = {
+    // why: lets state_guards run their own SELECT without declaring a named predicate per guard.
+    'sql.query': (params: Record<string, unknown>) => {
+      const { query, ...rest } = params;
+      if (typeof query !== 'string') {
+        throw new Error('sql.query requires a "query" string param');
+      }
+      const bind: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(rest)) {
+        if (typeof v === 'boolean') bind[k] = v ? 1 : 0;
+        else if (v === null || ['string', 'number', 'bigint'].includes(typeof v)) bind[k] = v;
+      }
+      const stmt = db.prepare(query);
+      return query.trim().toUpperCase().startsWith('SELECT') ? stmt.get(bind) : stmt.run(bind);
+    },
+  };
 
   for (const [predicateName, handler] of Object.entries(config)) {
     resolvers[predicateName] = (params: Record<string, unknown>) => {

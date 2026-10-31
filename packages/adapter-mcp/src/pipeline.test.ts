@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { OperationHandle, noopAdapter } from '@agent-ready/core';
+import { OperationHandle, noopAdapter, createAdapter } from '@agent-ready/core';
 import type { Operation } from '@agent-ready/core';
 import { runOperation } from './pipeline.js';
 
@@ -170,5 +170,94 @@ describe('runOperation - signposts that teach', () => {
 
     const whole = await runOperation(listOp(undefined), vi.fn().mockResolvedValue(full), {});
     expect((whole.structuredContent as any).data).toEqual(full);
+  });
+});
+
+describe('runOperation - state guards', () => {
+  const guardedOp = (predicate?: string) =>
+    new OperationHandle(
+      {
+        id: 'OP-G-01',
+        name: 'fechar_chamado',
+        risk_level: 'contextual',
+        autonomy_policy: 'execute_after_validation',
+        input_schema: { chamado_id: { type: 'int', required: true } },
+        state_guards: [
+          {
+            description: 'ticket is open',
+            predicate,
+            query: 'SELECT status FROM tickets WHERE id = @chamado_id',
+            assert: { status: 'open' },
+            on_fail: { message: 'Ticket already closed', suggest: 'Reopen it first' },
+          },
+        ],
+      } satisfies Operation,
+      noopAdapter(),
+    );
+
+  it('failing state guard blocks and skips executor', async () => {
+    const executor = vi.fn();
+    const resolver = vi.fn().mockResolvedValue({ status: 'closed' });
+    const result = await runOperation(guardedOp(), executor, { chamado_id: 1 }, {}, { resolvers: { 'sql.query': resolver } });
+
+    const sp = result.structuredContent as any;
+    expect(sp.type).toBe('blocked_transition');
+    expect(sp.reason).toBe('Ticket already closed');
+    expect(sp.what_to_do).toBe('Reopen it first');
+    expect(executor).not.toHaveBeenCalled();
+    expect(resolver).toHaveBeenCalledWith({
+      chamado_id: 1,
+      query: 'SELECT status FROM tickets WHERE id = @chamado_id',
+    });
+  });
+
+  it('guards run after fk and before executor', async () => {
+    const order: string[] = [];
+    const adapter = createAdapter({
+      'entity.exists': () => {
+        order.push('fk');
+        return true;
+      },
+    });
+    const op = new OperationHandle(
+      {
+        ...guardedOp('ticket.is_open').definition,
+        input_schema: { chamado_id: { type: 'int', required: true, foreign_key: { table: 'tickets' } } },
+      },
+      adapter,
+    );
+    const executor = vi.fn().mockImplementation(async () => {
+      order.push('executor');
+      return {};
+    });
+    const resolvers = {
+      'ticket.is_open': () => {
+        order.push('guard');
+        return [{ status: 'open', extra: 1 }];
+      },
+    };
+    const result = await runOperation(op, executor, { chamado_id: 1 }, {}, { resolvers });
+
+    expect(result.isError).toBe(false);
+    expect(executor).toHaveBeenCalledTimes(1);
+    expect(order).toEqual(['fk', 'guard', 'executor']);
+  });
+
+  it('does not block when no resolver matches the guard predicate', async () => {
+    const executor = vi.fn().mockResolvedValue({});
+    const result = await runOperation(guardedOp('other.pred'), executor, { chamado_id: 1 }, {}, { resolvers: { 'sql.query': () => ({ status: 'closed' }) } });
+
+    expect(result.isError).toBe(false);
+    expect(executor).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed when the guard resolver throws', async () => {
+    const executor = vi.fn();
+    const resolvers = { 'sql.query': () => { throw new Error('db down'); } };
+    const result = await runOperation(guardedOp(), executor, { chamado_id: 1 }, {}, { resolvers });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('db down');
+    expect(executor).not.toHaveBeenCalled();
   });
 });

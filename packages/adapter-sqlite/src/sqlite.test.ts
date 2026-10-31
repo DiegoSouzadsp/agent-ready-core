@@ -48,5 +48,18 @@ describe('createSqliteResolvers', () => {
     expect(fn).toHaveBeenCalledWith(mockDb, params);
     expect(result).toBe('custom_result');
   });
+
+  it('provides a generic sql.query predicate that binds params except the query itself', () => {
+    const mockStmt = { get: vi.fn().mockReturnValue({ status: 'open' }) };
+    vi.mocked(mockDb.prepare).mockReturnValue(mockStmt as any);
+
+    const resolvers = createSqliteResolvers(mockDb, {});
+    const result = resolvers['sql.query']({ query: 'SELECT status FROM t WHERE id = @id', id: 3, flag: true, nested: { a: 1 } });
+
+    expect(mockDb.prepare).toHaveBeenCalledWith('SELECT status FROM t WHERE id = @id');
+    expect(mockStmt.get).toHaveBeenCalledWith({ id: 3, flag: 1 });
+    expect(result).toEqual({ status: 'open' });
+    expect(() => resolvers['sql.query']({ id: 3 })).toThrow(/query/);
+  });
 });
 

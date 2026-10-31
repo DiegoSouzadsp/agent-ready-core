@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { AgentReady } from '@agent-ready/core';
+import { OperationHandle, createAdapter } from '@agent-ready/core';
+import type { AdapterResolvers, AgentReady, Operation } from '@agent-ready/core';
 import { operationInputSchema, operationToolDescription, operationToolAnnotations } from './schema.js';
-import { runOperation } from './pipeline.js';
+import { runOperation, DEFAULT_GUARD_PREDICATE } from './pipeline.js';
 import type { ExecutorMap, McpToolResult } from './types.js';
 
 export type { ExecutorFn, ExecutorMap, McpToolResult } from './types.js';
@@ -13,7 +14,8 @@ export {
   operationToolDescription,
   operationToolAnnotations,
 } from './schema.js';
-export { runOperation } from './pipeline.js';
+export { runOperation, DEFAULT_GUARD_PREDICATE } from './pipeline.js';
+export type { RunOperationOptions } from './pipeline.js';
 
 /** Name of the meta-tool that returns an operation's full ARS contract. */
 export const CONTRACT_TOOL_NAME = 'get_operation_contract';
@@ -27,6 +29,18 @@ export interface RegisterArsToolsOptions {
    * can pull before composing inputs for a complex call.
    */
   exposeContract?: boolean;
+  /**
+   * Resolvers that evaluate `state_guards` (guard.predicate, default 'sql.query')
+   * and `entity.exists` for foreign keys. Without them, guards are declared but
+   * not enforced and the tool description and a stderr warning say so.
+   */
+  resolvers?: AdapterResolvers;
+}
+
+function unenforcedGuardCount(opDef: Operation, resolvers: AdapterResolvers | undefined): number {
+  return (opDef.state_guards ?? []).filter(
+    (g) => !resolvers?.[g.predicate ?? DEFAULT_GUARD_PREDICATE],
+  ).length;
 }
 
 /**
@@ -44,13 +58,25 @@ export function registerArsTools(
   executors: ExecutorMap,
   options: RegisterArsToolsOptions = {},
 ): void {
+  const resolvers = options.resolvers;
+  const adapter = resolvers && Object.keys(resolvers).length > 0 ? createAdapter(resolvers) : undefined;
+  const unenforced: string[] = [];
+
   for (const opDef of agent.allOperations) {
     const inputSchema = operationInputSchema(opDef);
-    const description = operationToolDescription(opDef);
+    const unenforcedGuards = unenforcedGuardCount(opDef, resolvers);
+    if (unenforcedGuards > 0) unenforced.push(`${opDef.name} (${unenforcedGuards})`);
+    const description = operationToolDescription(opDef, { unenforcedGuards });
     const annotations = operationToolAnnotations(opDef);
 
     const handler = async (input: Record<string, unknown>) =>
-      runOperation(agent.operation(opDef.name), executors[opDef.name], input, options.context ?? {});
+      runOperation(
+        adapter ? new OperationHandle(opDef, adapter) : agent.operation(opDef.name),
+        executors[opDef.name],
+        input,
+        options.context ?? {},
+        { resolvers },
+      );
 
     // The SDK's `registerTool` infers the handler's arg type from `inputSchema` via
     // `ShapeOutput<Args>`, which recurses excessively (TS2589) for a non-literal
@@ -63,6 +89,12 @@ export function registerArsTools(
       opDef.name,
       { description, inputSchema, annotations },
       handler,
+    );
+  }
+
+  if (unenforced.length > 0) {
+    process.stderr.write(
+      `[agent-ready] warning: state_guards declared but not enforced (no resolver configured): ${unenforced.join(', ')}\n`,
     );
   }
 

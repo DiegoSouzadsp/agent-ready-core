@@ -137,7 +137,17 @@ export function operationInputSchema(operation: Operation): Record<string, z.Zod
  * `human_confirmation_if` (e.g. an amount threshold) get a conditional note,
  * since that can't be resolved until the actual input is known.
  */
-export function operationToolDescription(operation: Operation): string {
+export function operationToolDescription(
+  operation: Operation,
+  options: { unenforcedGuards?: number } = {},
+): string {
+  const guardNote = options.unenforcedGuards
+    ? ` Note: ${options.unenforcedGuards} state guard(s) are declared for this operation but not enforced by this server.`
+    : '';
+  return describeOperation(operation) + guardNote;
+}
+
+function describeOperation(operation: Operation): string {
   const base = operation.description ?? operation.name;
   const tag = `[risk: ${operation.risk_level}]`;
   const required = getInputFields(operation)
