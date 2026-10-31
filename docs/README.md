@@ -68,7 +68,8 @@ agent-ready-core/                      # Monorepo root
 │   ├── cli/                           # @agent-ready/cli — ars validate/list/risk/test
 │   ├── adapter-sqlite/                # Resolve state guards against SQLite
 │   ├── adapter-rest/                  # Resolve predicates via HTTP
-│   └── adapter-mcp/                   # Bridge an ARS schema to MCP tools
+│   ├── adapter-mcp/                   # Bridge an ARS schema to MCP tools
+│   └── gateway/                       # @agent-ready/gateway — generic ARS gateway (plugins, Streamable HTTP, ars-gateway CLI)
 │
 ├── apps/
 │   ├── docs/                          # Documentation site (Astro Starlight)
@@ -89,7 +90,8 @@ agent-ready-core/                      # Monorepo root
 │   └── tests/
 │       └── baseline-vs-schema.md      # Baseline vs schema validation template
 │
-└── README.md
+├── README.md                          # Root readme: quickstart, positioning, packages
+└── LICENSE                            # MIT
 ```
 
 ---
@@ -142,6 +144,8 @@ The finance module's field and operation names stay in Portuguese (`registrar_ga
       next_actions: [consulta_mes]
 ```
 
+> The `message_template` is what the agent presents to the human. Over the MCP transport the operation stays `pending` and is never executed by the adapter; the host must obtain the confirmation. See [How confirmation works today](../README.md#how-confirmation-works-today).
+
 ---
 
 ## Status
@@ -164,7 +168,7 @@ The finance module's field and operation names stay in Portuguese (`registrar_ga
 
 ## Next steps
 
-- [ ] Run baseline-vs-schema validation on FamilyOS
+- [x] Run baseline-vs-schema validation on FamilyOS (see `docs/tests/baseline-vs-schema.md`)
 - [ ] Publish results in a technical article
 - [ ] Add a Python validation library
 - [ ] Add a second reference system beyond FamilyOS

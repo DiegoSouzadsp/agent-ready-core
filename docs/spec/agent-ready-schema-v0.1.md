@@ -240,19 +240,25 @@ include_fields: list[string]      # fields to include in the audit log
 
 ---
 
-## How the agent uses the schema
+## How the schema is consumed
 
-1. **Receives an intent** from the human in natural language
-2. **Identifies the operation** by its name or description
-3. **Loads the operation's schema**
-4. **Extracts fields** from the intent, inferring from context when `infer_from_context: true`
-5. **Validates fields** against `input_schema`
-6. **Runs `state_guards`** — if one fails, returns a message and stops
-7. **Runs `validation_rules`** — if one fails, applies its policy (block / warn / human_confirmation)
-8. **Checks `human_confirmation`** — if `risk_level == confirmation`, pauses and waits
-9. **Executes the operation**
-10. **Runs `side_effects`**
-11. **Returns a signpost** with the result, alerts, and `next_actions`
+The agent is the **consumer** of the schema; it does not enforce it. Steps 1-4 are the agent's job. Steps 5-11 are performed by the runtime (`@agent-ready/core`) or by a gateway built on it, which applies them on every call regardless of what the agent decides.
+
+1. **Receives an intent** from the human in natural language (agent)
+2. **Identifies the operation** by its name or description (agent)
+3. **Loads the operation's schema** (agent, via the tool listing or the schema itself)
+4. **Extracts fields** from the intent, inferring from context when `infer_from_context: true` (agent)
+5. **Validates fields** against `input_schema` (runtime/gateway)
+6. **Runs `state_guards`** — if one fails, returns a message and stops (runtime/gateway)
+7. **Runs `validation_rules`** — if one fails, applies its policy (block / warn / human_confirmation) (runtime/gateway)
+8. **Checks `human_confirmation`** — if `risk_level == confirmation`, the runtime does not execute and returns a pending response; the host obtains the human's answer (runtime/gateway, host)
+9. **Executes the operation** — only after the checks above pass (runtime/gateway)
+10. **Runs `side_effects`** (runtime/gateway)
+11. **Returns a signpost** with the result, alerts, and `next_actions` (runtime/gateway)
+
+### Who enforces
+
+The rules in this schema are enforced by the runtime or the gateway, not requested of the agent. An agent that ignores the schema, or whose prompt says otherwise, still cannot execute a `confirmation` operation or skip input validation, because the executor is never reached. Annotations and client-side hooks can complement this, but the schema is the single source of the policy. Note that the v0.1 reference runtime does not yet wire every step (for example, state guards are resolved through core adapters but are not yet part of the MCP pipeline); the list above is the specified behavior.
 
 ---
 
