@@ -67,10 +67,10 @@
   },
   {
     "id": "INT-007",
-    "input": "tarefa comprar remédio pra Nicolin até sexta",
+    "input": "tarefa comprar remédio pra Bruno até sexta",
     "expected_operation": "criar_tarefa",
     "expected_fields": {
-      "titulo": "comprar remédio pra Nicolin",
+      "titulo": "comprar remédio pra Bruno",
       "data_vencimento": "next_friday",
       "prioridade": "media"
     },

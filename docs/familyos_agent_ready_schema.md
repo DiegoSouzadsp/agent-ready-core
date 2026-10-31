@@ -2,7 +2,7 @@
 
 > Validação prática do modelo Agent-Ready Schema
 > Sistema: FamilyOS (Telegram + SQLite + Gemini Flash + Hermes AGT)
-> Autores: Diego & Nicolin
+> Autor: Diego Souza (Orquestra AI)
 
 ---
 
@@ -409,7 +409,7 @@ Níveis de risco:
 ```json
 {
   "status": 200,
-  "data": { "membro": "Diego", "tipo_sanguineo": "O+", "alergias": ["Dipirona"], "plano": "Amil" },
+  "data": { "membro": "Ana", "tipo_sanguineo": "A+", "alergias": ["Penicilina"], "plano": "PlanoSaúde X" },
   "next": "Para atualizar ficha use atualizar_ficha_medica. Para ver medicamentos use consultar_medicamentos."
 }
 ```
@@ -437,7 +437,7 @@ Níveis de risco:
 ```json
 {
   "status": 201,
-  "data": { "vacina": "Gripe", "membro": "Nicolin", "proxima_dose": "2027-04-01" },
+  "data": { "vacina": "Gripe", "membro": "Bruno", "proxima_dose": "2027-04-01" },
   "next": "Vacina registrada. Lembrete criado para 2027-03-02."
 }
 ```
@@ -467,7 +467,7 @@ Níveis de risco:
 ```json
 {
   "status": 201,
-  "data": { "titulo": "Aniversário Nicolin", "data": "1990-09-15", "lembrete_em": "3 dias antes" },
+  "data": { "titulo": "Aniversário Bruno", "data": "1988-03-21", "lembrete_em": "3 dias antes" },
   "next": "Data registrada. Lembrete automático configurado."
 }
 ```
@@ -566,5 +566,5 @@ Documentar a diferença de comportamento.
 
 ---
 
-*FamilyOS Agent-Ready Schema v1.0 — Diego & Nicolin — 2026*
+*FamilyOS Agent-Ready Schema v1.0 — Diego Souza (Orquestra AI) — 2026*
 *Baseado em: Felipe Amorim — "The A in API No Longer Means Application"*

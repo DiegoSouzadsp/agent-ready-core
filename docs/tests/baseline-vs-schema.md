@@ -97,12 +97,12 @@ Metrics evaluated per intent:
 
 ---
 
-### INT-007 — *"tarefa comprar remédio pra Nicolin até sexta"* ("task: buy medicine for Nicolin by Friday")
+### INT-007 — *"tarefa comprar remédio pra Bruno até sexta"* ("task: buy medicine for Bruno by Friday")
 
 | Phase | Result | Notes |
 |------|-----------|------------|
 | Baseline | ✅ | `criar_tarefa`, `responsavel_id` guessed as the sender (self-flagged as an assumption), due date computed correctly. |
-| Schema | ✅ | Same conclusion, but grounded in the named `infer_from_context` mechanism rather than an ad-hoc guess — and explicitly reasoned that Nicolin is the beneficiary, not the `responsavel_id`. |
+| Schema | ✅ | Same conclusion, but grounded in the named `infer_from_context` mechanism rather than an ad-hoc guess — and explicitly reasoned that Bruno is the beneficiary, not the `responsavel_id`. |
 
 **Expected:** `criar_tarefa`, `responsavel_id` inferred, `data_vencimento` computed
 
