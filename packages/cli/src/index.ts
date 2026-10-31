@@ -6,6 +6,7 @@ import { AgentReady } from '@agent-ready/core';
 import fs from 'node:fs';
 import path from 'node:path';
 import { INIT_TEMPLATE } from './init-template.js';
+import { buildHookScript, buildSettingsSnippet, HOOK_DOC_URL, type HookOp } from './hooks-export.js';
 
 const program = new Command();
 
@@ -224,6 +225,46 @@ program
       fs.writeFileSync(target, INIT_TEMPLATE, 'utf8');
       console.log(pc.green(`\n✅ Created ${target}`));
       console.log(`Next: ars validate ${target}`);
+    } catch (err: any) {
+      console.error(pc.red(`\n❌ Error: ${err.message}`));
+      process.exit(1);
+    }
+  });
+
+const hooks = program.command('hooks').description('Export enforcement hooks for agent clients');
+
+hooks
+  .command('export')
+  .description('Generate a PreToolUse hook (script + settings snippet) from a schema')
+  .argument('<schema>', 'path to the schema YAML file')
+  .requiredOption('--target <target>', 'client to export for (claude-code)')
+  .option('--server <name>', 'MCP server name as registered in the client', 'agent-ready')
+  .option('--out <dir>', 'output directory', '.')
+  .action(async (schema: string, opts: { target: string; server: string; out: string }) => {
+    try {
+      if (opts.target !== 'claude-code') {
+        console.error(pc.red(`\n❌ Unknown --target '${opts.target}'. Supported: claude-code`));
+        process.exit(1);
+      }
+      const agent = await AgentReady.fromFile(path.resolve(process.cwd(), schema));
+      const ops: HookOp[] = agent.allOperations.map((o: any) => ({
+        name: o.name,
+        risk_level: o.risk_level,
+        reason:
+          o.human_confirmation?.message_template ??
+          o.description ??
+          `Operation ${o.name} requires confirmation`,
+      }));
+      const outDir = path.resolve(process.cwd(), opts.out);
+      fs.mkdirSync(outDir, { recursive: true });
+      const scriptFile = path.join(outDir, 'ars-pretooluse.mjs');
+      fs.writeFileSync(scriptFile, buildHookScript(opts.server, ops), 'utf8');
+      const snippetFile = path.join(outDir, 'settings.snippet.json');
+      const snippet = buildSettingsSnippet(opts.server, scriptFile.replace(/\\/g, '/'));
+      fs.writeFileSync(snippetFile, JSON.stringify(snippet, null, 2) + '\n', 'utf8');
+      console.log(pc.green(`\n✅ Wrote ${scriptFile}`));
+      console.log(pc.green(`✅ Wrote ${snippetFile}`));
+      console.log(`Merge settings.snippet.json into .claude/settings.json (format: ${HOOK_DOC_URL})`);
     } catch (err: any) {
       console.error(pc.red(`\n❌ Error: ${err.message}`));
       process.exit(1);

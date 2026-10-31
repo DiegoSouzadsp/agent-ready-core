@@ -152,3 +152,67 @@ describe('ars init', () => {
     expect(fs.readFileSync(file, 'utf8')).toContain('module: tickets');
   });
 });
+
+describe('ars hooks export', () => {
+  const fixture = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, '__fixtures__/claude-code-pretooluse.json'), 'utf8'),
+  );
+
+  function exportHook(server = 's') {
+    const schemaDir = tmpDir();
+    expect(spawnSync('node', [cliPath, 'init', schemaDir]).status).toBe(0);
+    const out = tmpDir();
+    const r = spawnSync('node', [
+      cliPath, 'hooks', 'export', path.join(schemaDir, 'agent-ready.yml'),
+      '--target', 'claude-code', '--server', server, '--out', out,
+    ]);
+    return { r, out };
+  }
+
+  function runHook(script: string, toolName: string) {
+    const r = spawnSync('node', [script], {
+      input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: toolName, tool_input: {} }),
+      encoding: 'utf8',
+    });
+    return { status: r.status, stdout: r.stdout.trim() };
+  }
+
+  it('hooks export prints script and settings snippet', () => {
+    const { r, out } = exportHook();
+    expect(r.status).toBe(0);
+    expect(fs.existsSync(path.join(out, 'ars-pretooluse.mjs'))).toBe(true);
+    const snippet = JSON.parse(fs.readFileSync(path.join(out, 'settings.snippet.json'), 'utf8'));
+    expect(snippet.hooks.PreToolUse[0].matcher).toBe('mcp__s__.*');
+    const bad = spawnSync('node', [cliPath, 'hooks', 'export', 'x.yml', '--target', 'nope']);
+    expect(bad.status).toBe(1);
+  });
+
+  it('generated hook decides by risk level', () => {
+    const { out } = exportHook();
+    const script = path.join(out, 'ars-pretooluse.mjs');
+    for (const name of ['list_tickets', 'create_ticket', 'assign_ticket']) {
+      const res = runHook(script, `mcp__s__${name}`);
+      expect(res.status).toBe(0);
+      expect(JSON.parse(res.stdout).hookSpecificOutput.permissionDecision).toBe('allow');
+    }
+    const ask = runHook(script, 'mcp__s__delete_ticket');
+    expect(JSON.parse(ask.stdout).hookSpecificOutput.permissionDecision).toBe('ask');
+    for (const unknown of ['mcp__s__nope', 'mcp__other__list_tickets', 'Bash']) {
+      const res = runHook(script, unknown);
+      expect(res.status).toBe(0);
+      expect(res.stdout).toBe('');
+    }
+  });
+
+  it('hook output matches documented claude code format fixture', () => {
+    expect(fixture.source_url).toMatch(/^https:\/\//);
+    const { out } = exportHook();
+    const script = path.join(out, 'ars-pretooluse.mjs');
+    expect(JSON.parse(runHook(script, 'mcp__s__list_tickets').stdout)).toEqual(fixture.allow_output);
+    expect(JSON.parse(runHook(script, fixture.input_example.tool_name).stdout)).toEqual(fixture.ask_output);
+    const snippet = JSON.parse(fs.readFileSync(path.join(out, 'settings.snippet.json'), 'utf8'));
+    snippet.hooks.PreToolUse[0].hooks[0].command = snippet.hooks.PreToolUse[0].hooks[0].command
+      .replace(out.split(path.sep).join('/'), '<OUT>');
+    expect(snippet).toEqual(fixture.settings_snippet);
+  });
+});

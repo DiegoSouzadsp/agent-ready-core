@@ -1,0 +1,29 @@
+{
+  "source_url": "https://code.claude.com/docs/en/hooks",
+  "consulted_on": "2026-10-31",
+  "input_example": {
+    "hook_event_name": "PreToolUse",
+    "tool_name": "mcp__s__delete_ticket",
+    "tool_input": { "ticket_id": 1 }
+  },
+  "settings_snippet": {
+    "hooks": {
+      "PreToolUse": [
+        {
+          "matcher": "mcp__s__.*",
+          "hooks": [{ "type": "command", "command": "node <OUT>/ars-pretooluse.mjs" }]
+        }
+      ]
+    }
+  },
+  "allow_output": {
+    "hookSpecificOutput": { "hookEventName": "PreToolUse", "permissionDecision": "allow" }
+  },
+  "ask_output": {
+    "hookSpecificOutput": {
+      "hookEventName": "PreToolUse",
+      "permissionDecision": "ask",
+      "permissionDecisionReason": "This will permanently delete ticket {{ticket_id}}. A human must approve before it runs."
+    }
+  }
+}
