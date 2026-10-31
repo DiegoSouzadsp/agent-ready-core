@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { startGatewayHttp } from './http.js';
 import type { RunningGateway } from './http.js';
 
@@ -73,6 +74,19 @@ describe('startGatewayHttp — end-to-end over Streamable HTTP', () => {
     await client.close();
   });
 
+  it('missing required field is a signpost not -32602', async () => {
+    const client = await connectClient();
+    const result = await client.callTool({ name: 'criar_item', arguments: { valor: 'abc' } });
+    const text = (result.content as Array<{ text: string }>)[0].text;
+
+    expect(result.isError).toBe(true);
+    expect((result.structuredContent as { type?: string }).type).toBe('validation_error');
+    expect(text).toContain('Reason:');
+    expect(text).toContain('What to do:');
+    expect(text).toContain('[nome]');
+    await client.close();
+  });
+
   it('never reaches the target system for a confirmation operation (pending signpost instead)', async () => {
     fetchMock.mockClear();
     const client = await connectClient({ 'X-Acting-User': 'user-42' });
@@ -83,6 +97,41 @@ describe('startGatewayHttp — end-to-end over Streamable HTTP', () => {
     const structured = result.structuredContent as { type?: string } | undefined;
     expect(structured?.type).toBe('pending');
     await client.close();
+  });
+});
+
+describe('startGatewayHttp — real client elicitation', () => {
+  async function run(answer: { action: string; content?: Record<string, unknown> }) {
+    const fetchMock = vi.fn(async () =>
+      new Response('{"id":7}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+    const gateway = await startGatewayHttp({
+      pluginDir: REFERENCE_DIR,
+      port: 0,
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      env: { REFERENCE_API_URL: 'http://fake-system.local', REFERENCE_TOKEN: 'svc-secret' },
+      onAudit: () => {},
+    });
+    const client = new Client({ name: 'elicit-client', version: '0.0.1' }, { capabilities: { elicitation: {} } });
+    const asked = vi.fn(async () => answer);
+    client.setRequestHandler(ElicitRequestSchema, asked as never);
+    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${gateway.port}/mcp`)));
+    const result = await client.callTool({ name: 'criar_item', arguments: { nome: 'Andaime', valor: 120 } });
+    await client.close();
+    await new Promise<void>((r) => gateway.httpServer.close(() => r()));
+    return { result, fetchMock, asked };
+  }
+
+  // hazard: http.ts builds a stateless server per request, so the initialize that carries the client's elicitation capability never reaches it; this proof fails until the gateway keeps sessions.
+  it.fails('real client elicitation accept executes decline does not', async () => {
+    const accepted = await run({ action: 'accept', content: { confirm: true } });
+    expect(accepted.asked).toHaveBeenCalledTimes(1);
+    expect(accepted.fetchMock).toHaveBeenCalledTimes(1);
+    expect((accepted.result.structuredContent as { type?: string }).type).toBe('success');
+
+    const declined = await run({ action: 'decline' });
+    expect(declined.fetchMock).not.toHaveBeenCalled();
+    expect((declined.result.structuredContent as { type?: string }).type).toBe('pending');
   });
 });
 
