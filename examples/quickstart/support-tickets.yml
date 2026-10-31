@@ -1,0 +1,251 @@
+schema_version: "0.1"
+module: tickets
+system: helpdesk-demo
+updated_at: "2026-10-31"
+
+operations:
+
+  - id: OP-TKT-01
+    name: list_tickets
+    description: List tickets as a short summary (id, title, status). Use get_ticket for details.
+    risk_level: free
+    autonomy_policy: execute_immediately
+
+    input_schema:
+      status:
+        type: enum
+        values: [open, closed]
+        required: false
+        description: "Filter by status. Omit to list all."
+
+    response_strategy:
+      mode: summary
+      detail_operation: get_ticket
+
+    signpost:
+      success:
+        include: [count, tickets]
+        next_actions:
+          - operation: get_ticket
+            reason: "Fetch the full details (description, assignee) of one ticket from this list."
+
+    audit:
+      log: false
+
+  - id: OP-TKT-02
+    name: get_ticket
+    description: Get the full details of one ticket
+    risk_level: free
+    autonomy_policy: execute_immediately
+
+    input_schema:
+      ticket_id:
+        type: int
+        required: true
+        foreign_key:
+          table: tickets
+
+    signpost:
+      success:
+        include: [ticket]
+        next_actions:
+          - operation: assign_ticket
+            reason: "If the ticket is open and has no assignee, assign it to an agent."
+          - operation: close_ticket
+            reason: "If the problem is solved, close the ticket with a resolution."
+
+    audit:
+      log: false
+
+  - id: OP-TKT-03
+    name: create_ticket
+    description: Open a new support ticket for a customer
+    risk_level: validated
+    autonomy_policy: execute_after_validation
+
+    input_schema:
+      title:
+        type: string
+        required: true
+        min_length: 5
+        max_length: 120
+        description: "Short summary of the problem"
+      description:
+        type: string
+        required: false
+        max_length: 2000
+      customer_id:
+        type: int
+        required: true
+        foreign_key:
+          table: customers
+          filter:
+            active: true
+      priority:
+        type: enum
+        values: [low, normal, high]
+        required: false
+        default: normal
+      reporter_id:
+        type: int
+        required: true
+        infer_from_context: true
+        description: "Who is reporting. The agent should infer it from the conversation."
+
+    validation_rules:
+      - id: no_duplicate_open_title
+        description: The customer must not already have an open ticket with the same title
+        query: "SELECT id FROM tickets WHERE customer_id = :customer_id AND title = :title AND status = 'open'"
+        assert_empty: true
+        on_fail:
+          policy: block
+          message: "This customer already has an open ticket with the same title."
+          suggest: list_tickets
+
+    signpost:
+      success:
+        include: [ticket_id, status, priority]
+        next_actions:
+          - operation: assign_ticket
+            reason: "A new ticket starts unassigned; assign it to an agent."
+      validation_error:
+        message: "The ticket was not created."
+        include_errors: true
+        next_actions:
+          - operation: create_ticket
+            reason: "Fix the listed fields and call create_ticket again."
+
+    audit:
+      log: true
+      include_fields: [customer_id, reporter_id, priority]
+
+  - id: OP-TKT-04
+    name: assign_ticket
+    description: Assign an open ticket to a support agent
+    risk_level: contextual
+    autonomy_policy: validate_state_then_execute
+
+    input_schema:
+      ticket_id:
+        type: int
+        required: true
+        foreign_key:
+          table: tickets
+      agent_id:
+        type: int
+        required: true
+        foreign_key:
+          table: agents
+          filter:
+            active: true
+
+    state_guards:
+      - description: Ticket is open
+        query: "SELECT status FROM tickets WHERE id = :ticket_id"
+        assert:
+          status: open
+        on_fail:
+          message: "Only open tickets can be assigned. This ticket is already closed."
+          suggest: list_tickets
+      - description: Agent exists
+        query: "SELECT active FROM agents WHERE id = :agent_id"
+        assert:
+          active: true
+        on_fail:
+          message: "That agent does not exist or is inactive."
+          suggest: get_ticket
+
+    signpost:
+      success:
+        include: [ticket_id, assignee_id]
+        next_actions:
+          - operation: get_ticket
+            reason: "Confirm the assignment by reading the ticket back."
+      blocked_transition:
+        message_template: "Cannot assign ticket {{ticket_id}} in its current state."
+        next_actions:
+          - operation: list_tickets
+            reason: "Find an open ticket to assign instead."
+
+    audit:
+      log: true
+      include_fields: [ticket_id, agent_id]
+
+  - id: OP-TKT-05
+    name: close_ticket
+    description: Close an open ticket with a resolution note
+    risk_level: contextual
+    autonomy_policy: validate_state_then_execute
+
+    input_schema:
+      ticket_id:
+        type: int
+        required: true
+        foreign_key:
+          table: tickets
+      resolution:
+        type: string
+        required: true
+        min_length: 3
+        max_length: 500
+        description: "What was done to solve the problem"
+      refund_amount:
+        type: decimal
+        required: false
+        gte: 0
+        human_confirmation_if:
+          gt: 100
+        description: "Refund granted to the customer. Above 100 a human must confirm."
+
+    state_guards:
+      - description: Ticket is open
+        query: "SELECT status FROM tickets WHERE id = :ticket_id"
+        assert:
+          status: open
+        on_fail:
+          message: "This ticket is already closed."
+          suggest: list_tickets
+
+    signpost:
+      success:
+        include: [ticket_id, status, resolution]
+        next_actions:
+          - operation: list_tickets
+            reason: "Check what is still open."
+      pending:
+        message_template: "Closing ticket {{ticket_id}} with a refund of {{refund_amount}} needs human approval."
+
+    audit:
+      log: true
+      include_fields: [ticket_id, refund_amount]
+
+  - id: OP-TKT-06
+    name: delete_ticket
+    description: Permanently delete a ticket. Irreversible.
+    risk_level: confirmation
+    autonomy_policy: require_explicit_confirmation
+
+    input_schema:
+      ticket_id:
+        type: int
+        required: true
+        foreign_key:
+          table: tickets
+
+    human_confirmation:
+      required: true
+      message_template: "This will permanently delete ticket {{ticket_id}}. A human must approve before it runs."
+      pending_status: 202
+
+    signpost:
+      pending:
+        message_template: "Waiting for human confirmation to delete ticket {{ticket_id}}."
+      success:
+        message: "Ticket deleted."
+        next_actions:
+          - operation: list_tickets
+            reason: "See the remaining tickets."
+
+    audit:
+      log: true
+      include_fields: [ticket_id]
