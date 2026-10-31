@@ -11,9 +11,9 @@ One operation per risk level, all declared in [`support-tickets.yml`](./support-
 | `free` | `list_tickets` | Returns a summary, not the whole table; `get_ticket` is the drill-down. |
 | `validated` | `create_ticket` | Fields are validated before anything runs (title length, required customer, enum priority). |
 | `contextual` | `assign_ticket`, `close_ticket` | State guards ("ticket is open", "agent exists"); closing with a refund above 100 asks for a human. |
-| `confirmation` | `delete_ticket` | Returns `pending` and **never executes**. |
+| `confirmation` | `delete_ticket` | Asks a human through MCP elicitation when the client supports it, otherwise returns `pending`. Without approval it does not execute. |
 
-Important: `confirmation` does not run the operation. The server answers "pending" and stops; the executor for `delete_ticket` is never called. Approving it is the host's job, not the agent's.
+Important: `confirmation` never runs on the agent's say-so. With an elicitation-capable client the human gets a prompt, and only `accept` with `confirm: true` runs the executor. With any other client the server answers "pending" and the executor for `delete_ticket` is not called; approving it is then the host's job.
 
 ## Run it
 
@@ -54,11 +54,11 @@ or put the same `command`/`args` in a `.mcp.json` file in the project root, in t
 ## Three prompts to try
 
 1. **Free:** "List open tickets."
-   Expect `list_tickets` to run immediately and return ids and titles of tickets 1 and 2 only. Ticket 3 is closed.
+   Expect `list_tickets` to run immediately and return ids and titles of tickets 1 and 2 only, as JSON in the text of the result. Ticket 3 is closed.
 2. **Validated, with an error:** "Create a ticket without a title."
-   Expect the call to be rejected before anything is created, with an error naming the missing fields (`title`, and `reporter_id`). A good agent then asks you for a title and retries.
+   Expect an error result (not a protocol error) with `Reason`, `What to do` and one line per failing field (`title`). Nothing is created. A good agent then asks you for a title and retries.
 3. **Confirmation:** "Delete ticket 1."
-   Expect a `pending` answer ("This will permanently delete ticket 1. A human must approve before it runs.") and no deletion. Ask "list tickets" afterwards: ticket 1 is still there.
+   Expect one of two outcomes. A client with elicitation shows a confirmation prompt: accept deletes ticket 1, decline leaves it. A client without elicitation gets a `pending` answer ("This will permanently delete ticket 1. A human must approve before it runs.") and no deletion. Ask "list tickets" afterwards to see which one happened.
 
 Also try "assign ticket 3 to agent 10" (blocked: ticket 3 is closed) and "close ticket 1, refund 500" (pending: refund above 100 needs a human).
 
@@ -73,5 +73,6 @@ Spawns the server, performs the MCP handshake, prints the tool list with each `[
 ## Known limits
 
 - The tool list has a seventh tool, `get_operation_contract`, which returns the full contract of an operation. It is added by the adapter.
-- `list_tickets` puts its rows in the response's `structuredContent`; the plain text line only says it succeeded. Clients that show only the text part will not display the rows.
+- `server.ts` passes no `resolvers`, so the pipeline does not enforce `state_guards`: the tool description says they are declared and not enforced, and a warning goes to stderr at startup.
+- Audit is off unless `ARS_AUDIT=stderr` is set or an `onAudit` sink is passed.
 - `state_guards` and `validation_rules` carry SQL that needs a database adapter. Here there is none, so the in-memory executors in `server.ts` enforce the same rules by hand.
