@@ -9,6 +9,20 @@ function toMcpResult(signpost: SignpostResult, isError: boolean): McpToolResult 
   };
 }
 
+function successResult(signpost: SignpostResult): McpToolResult {
+  const sections = [signpost.guidance, JSON.stringify(signpost.data ?? {})];
+  if (signpost.next && signpost.next.length > 0) {
+    sections.push(
+      `Next: ${signpost.next.map((n) => `${n.operation} (${n.reason})`).join('; ')}`,
+    );
+  }
+  return {
+    content: [{ type: 'text', text: sections.join('\n\n') }],
+    structuredContent: signpost as unknown as Record<string, unknown>,
+    isError: false,
+  };
+}
+
 function errorResult(text: string): McpToolResult {
   return {
     content: [{ type: 'text', text }],
@@ -16,13 +30,36 @@ function errorResult(text: string): McpToolResult {
   };
 }
 
+function pick(data: Record<string, unknown>, fields: string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const f of fields) if (data[f] !== undefined) out[f] = data[f];
+  return out;
+}
+
+function applyResponseStrategy(
+  op: OperationHandle,
+  signpost: SignpostResult,
+  execResult: Record<string, unknown>,
+): SignpostResult {
+  const strategy = op.definition.response_strategy;
+  if (strategy?.mode !== 'summary' || !strategy.summary_fields) return signpost;
+
+  const next = [...(signpost.next ?? [])];
+  if (strategy.detail_operation) {
+    next.push({
+      operation: strategy.detail_operation,
+      reason: strategy.guidance ?? 'Call for the full details of this result.',
+    });
+  }
+  return { ...signpost, data: pick(execResult, strategy.summary_fields), next };
+}
+
 /**
  * Run the full ARS governance pipeline for one MCP tool call:
  * defaults → validate → foreign keys → confirmation gate → executor → signpost.
  *
- * The executor is never called when validation fails (field-level or FK) or
- * when `needsHumanConfirmation` is true (risk_level: confirmation, or a
- * field-level human_confirmation_if trigger) — see AD-002 in .specs/STATE.md.
+ * invariant: the executor is never called when validation fails (field-level
+ * or FK) or when `needsHumanConfirmation` is true — see AD-002 in .specs/STATE.md.
  *
  * FK validation runs only when the schema declares foreign_key fields AND the
  * adapter registers the FK_PREDICATE ('entity.exists') resolver; otherwise it
@@ -63,5 +100,5 @@ export async function runOperation(
     return errorResult(`Executor for "${op.definition.name}" failed: ${(err as Error).message}`);
   }
 
-  return toMcpResult(op.signpost('success', execResult), false);
+  return successResult(applyResponseStrategy(op, op.signpost('success', execResult), execResult));
 }

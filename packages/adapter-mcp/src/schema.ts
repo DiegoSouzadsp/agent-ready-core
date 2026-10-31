@@ -113,9 +113,9 @@ export function inputFieldsToZodShape(fields: InputField[]): Record<string, z.Zo
     if (description) {
       zodType = zodType.describe(description);
     }
-    if (!field.required) {
-      zodType = zodType.optional();
-    }
+    // why: the SDK validates inputSchema before the handler runs, so a required Zod field turns
+    // a missing value into a raw -32602; every field stays optional and ARS validates instead.
+    zodType = zodType.optional();
 
     shape[field.name!] = zodType;
   }
@@ -140,19 +140,23 @@ export function operationInputSchema(operation: Operation): Record<string, z.Zod
 export function operationToolDescription(operation: Operation): string {
   const base = operation.description ?? operation.name;
   const tag = `[risk: ${operation.risk_level}]`;
+  const required = getInputFields(operation)
+    .filter((field) => field.required)
+    .map((field) => (field.infer_from_context ? `${field.name} (inferred from context if omitted)` : field.name));
+  const requiredNote = required.length > 0 ? ` Required fields: ${required.join(', ')}.` : '';
 
   if (operation.risk_level === 'confirmation') {
-    return `${tag} ${base} — always requires explicit human confirmation; this call returns a pending response and never executes on its own.`;
+    return `${tag} ${base} — always requires explicit human confirmation; it executes only after the human approves (client elicitation), otherwise it returns a pending response.${requiredNote}`;
   }
 
   const hasConditionalConfirmation = getInputFields(operation).some(
     (field) => field.human_confirmation_if !== undefined,
   );
   if (hasConditionalConfirmation) {
-    return `${tag} ${base} — may require human confirmation depending on input values.`;
+    return `${tag} ${base} — may require human confirmation depending on input values.${requiredNote}`;
   }
 
-  return `${tag} ${base}`;
+  return `${tag} ${base}${requiredNote}`;
 }
 
 /**

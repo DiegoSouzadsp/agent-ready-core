@@ -77,9 +77,9 @@ describe('inputFieldsToZodShape', () => {
     expect(shape.payload.safeParse('x').success).toBe(true);
   });
 
-  it('does not wrap required:true fields in .optional()', () => {
+  it('wraps required:true fields in .optional() so ARS, not the SDK, reports the missing field', () => {
     const shape = inputFieldsToZodShape([field({ name: 'valor', type: 'decimal', required: true })]);
-    expect(shape.valor.safeParse(undefined).success).toBe(false);
+    expect(shape.valor.safeParse(undefined).success).toBe(true);
   });
 
   it('wraps required:false fields in .optional()', () => {
@@ -164,7 +164,7 @@ describe('operationToolDescription', () => {
   it('appends an explicit "always requires confirmation" note for risk_level:confirmation', () => {
     const result = operationToolDescription(op({ risk_level: 'confirmation' }));
     expect(result).toBe(
-      '[risk: confirmation] Does the thing — always requires explicit human confirmation; this call returns a pending response and never executes on its own.',
+      '[risk: confirmation] Does the thing — always requires explicit human confirmation; it executes only after the human approves (client elicitation), otherwise it returns a pending response.',
     );
   });
 
@@ -177,7 +177,7 @@ describe('operationToolDescription', () => {
     });
 
     expect(operationToolDescription(operation)).toBe(
-      '[risk: validated] Does the thing — may require human confirmation depending on input values.',
+      '[risk: validated] Does the thing — may require human confirmation depending on input values. Required fields: valor.',
     );
   });
 
@@ -187,7 +187,7 @@ describe('operationToolDescription', () => {
       input_schema: { valor: { type: 'decimal', required: true } },
     });
 
-    expect(operationToolDescription(operation)).toBe('[risk: validated] Does the thing');
+    expect(operationToolDescription(operation)).toBe('[risk: validated] Does the thing Required fields: valor.');
   });
 
   it('falls back to the operation name when description is absent', () => {

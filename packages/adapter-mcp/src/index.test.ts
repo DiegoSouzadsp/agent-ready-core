@@ -56,7 +56,7 @@ describe('registerArsTools', () => {
     registerArsTools(server as any, agent, {});
 
     const [, config] = server.registerTool.mock.calls.find((call) => call[0] === 'registrar_gasto')!;
-    expect(config.description).toBe('[risk: validated] Registra um gasto');
+    expect(config.description).toBe('[risk: validated] Registra um gasto Required fields: valor.');
     expect(config.inputSchema.valor).toBeDefined();
     expect(config.inputSchema.valor.safeParse(50).success).toBe(true);
   });
@@ -69,7 +69,7 @@ describe('registerArsTools', () => {
 
     const [, config] = server.registerTool.mock.calls.find((call) => call[0] === 'deletar_gasto')!;
     expect(config.description).toBe(
-      '[risk: confirmation] Deleta um gasto — always requires explicit human confirmation; this call returns a pending response and never executes on its own.',
+      '[risk: confirmation] Deleta um gasto — always requires explicit human confirmation; it executes only after the human approves (client elicitation), otherwise it returns a pending response. Required fields: gasto_id.',
     );
     expect(config.annotations).toEqual({ destructiveHint: true });
   });
@@ -261,5 +261,22 @@ describe('registerArsTools — foreign_key validation in the pipeline', () => {
 
     expect(result.isError).toBe(false);
     expect(executor).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('registerArsTools - permissive input schema', () => {
+  it('permissive input schema lists required fields in description', () => {
+    const agent = AgentReady.fromYAML(TWO_OP_SCHEMA);
+    const server = mockServer();
+    registerArsTools(server as any, agent, {});
+
+    for (const [name, config] of server.registerTool.mock.calls.map((c) => [c[0], c[1]] as const)) {
+      if (name === 'get_operation_contract') continue;
+      for (const field of Object.values(config.inputSchema) as any[]) {
+        expect(field.safeParse(undefined).success).toBe(true);
+      }
+    }
+    const reg = server.registerTool.mock.calls.find((c) => c[0] === 'registrar_gasto')![1];
+    expect(reg.description).toContain('Required fields: valor');
   });
 });

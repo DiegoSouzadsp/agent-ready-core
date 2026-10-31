@@ -100,3 +100,75 @@ describe('runOperation', () => {
     expect(result.content[0].text).toContain('sync boom');
   });
 });
+
+describe('runOperation - signposts that teach', () => {
+  const inferOp = new OperationHandle(
+    {
+      id: 'OP-T-03',
+      name: 'abrir_chamado',
+      risk_level: 'validated',
+      autonomy_policy: 'execute_after_validation',
+      input_schema: {
+        titulo: { type: 'string', required: true },
+        membro_id: { type: 'int', required: true, infer_from_context: true },
+      },
+      signpost: { success: { next_actions: [{ operation: 'listar_chamados', reason: 'See the queue' }] } },
+    } satisfies Operation,
+    noopAdapter(),
+  );
+
+  it('missing required field returns validation_error with reason and what_to_do', async () => {
+    const executor = vi.fn();
+    const result = await runOperation(inferOp, executor, { membro_id: 1 });
+
+    expect(result.isError).toBe(true);
+    const sp = result.structuredContent as any;
+    expect(sp.type).toBe('validation_error');
+    expect(sp.reason).toBeTruthy();
+    expect(sp.what_to_do).toContain('titulo');
+    expect(executor).not.toHaveBeenCalled();
+  });
+
+  it('infer_from_context filled before validation', async () => {
+    const executor = vi.fn().mockResolvedValue({ id: 9 });
+    const result = await runOperation(inferOp, executor, { titulo: 'x' }, { membro_id: 7 });
+
+    expect(result.isError).toBe(false);
+    expect(executor).toHaveBeenCalledWith({ titulo: 'x', membro_id: 7 });
+  });
+
+  it('success text carries result json and next', async () => {
+    const result = await runOperation(inferOp, vi.fn().mockResolvedValue({ id: 9 }), { titulo: 'x' }, { membro_id: 7 });
+
+    const text = result.content[0].text;
+    expect(text).toContain('{"id":9}');
+    expect(text).toContain('listar_chamados');
+    expect(text.indexOf('{"id":9}')).toBeLessThan(text.indexOf('listar_chamados'));
+    expect((result.structuredContent as any).data).toEqual({ id: 9 });
+  });
+
+  const listOp = (summary_fields?: string[]) =>
+    new OperationHandle(
+      {
+        id: 'OP-T-04',
+        name: 'listar_chamados',
+        risk_level: 'free',
+        input_schema: {},
+        response_strategy: { mode: 'summary', detail_operation: 'ver_chamado', summary_fields },
+      } satisfies Operation,
+      noopAdapter(),
+    );
+
+  it('response_strategy summary returns only summary_fields', async () => {
+    const full = { id: 1, titulo: 't', corpo: 'long body', historico: [1, 2] };
+    const result = await runOperation(listOp(['id', 'titulo']), vi.fn().mockResolvedValue(full), {});
+    const sp = result.structuredContent as any;
+
+    expect(sp.data).toEqual({ id: 1, titulo: 't' });
+    expect(sp.next.map((n: any) => n.operation)).toContain('ver_chamado');
+    expect(result.content[0].text).not.toContain('long body');
+
+    const whole = await runOperation(listOp(undefined), vi.fn().mockResolvedValue(full), {});
+    expect((whole.structuredContent as any).data).toEqual(full);
+  });
+});
