@@ -1,5 +1,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { registerArsTools } from '@agent-ready/adapter-mcp';
+import { registerArsTools, stderrAuditSink } from '@agent-ready/adapter-mcp';
+import type { AuditSink } from '@agent-ready/adapter-mcp';
+import type { AdapterResolvers } from '@agent-ready/core';
 import { loadPlugin } from './plugin.js';
 import { buildExecutorMap } from './executors.js';
 import type { LoadedPlugin } from './plugin.js';
@@ -10,6 +12,10 @@ export interface CreateGatewayServerOptions {
   actingUser?: string;
   fetchImpl?: typeof fetch;
   env?: NodeJS.ProcessEnv;
+  /** Resolvers that enforce state_guards (keyed by predicate, default 'sql.query'). Without them guards are declared, not enforced. */
+  resolvers?: AdapterResolvers;
+  /** Audit sink; defaults to JSON lines on stderr. */
+  onAudit?: AuditSink;
 }
 
 export interface RegisterPluginToolsOptions {
@@ -17,6 +23,8 @@ export interface RegisterPluginToolsOptions {
   fetchImpl?: typeof fetch;
   context?: Record<string, unknown>;
   exposeContract?: boolean;
+  resolvers?: AdapterResolvers;
+  onAudit?: AuditSink;
 }
 
 /**
@@ -32,6 +40,8 @@ export async function createGatewayServer(
   registerPluginTools(server, plugin, {
     actingUser: options.actingUser,
     fetchImpl: options.fetchImpl,
+    resolvers: options.resolvers,
+    onAudit: options.onAudit,
   });
 
   return { server, plugin };
@@ -55,5 +65,8 @@ export function registerPluginTools(
   registerArsTools(server, plugin.agent, executors, {
     context: opts.context,
     exposeContract: opts.exposeContract,
+    resolvers: opts.resolvers,
+    // why: a gateway runs unattended, so decisions leave a trail unless the host picks another sink.
+    onAudit: opts.onAudit ?? stderrAuditSink,
   });
 }

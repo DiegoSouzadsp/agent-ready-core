@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { fileURLToPath } from 'node:url';
+import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { startGatewayHttp } from './http.js';
@@ -79,6 +82,100 @@ describe('startGatewayHttp — end-to-end over Streamable HTTP', () => {
     expect(fetchMock).not.toHaveBeenCalled();
     const structured = result.structuredContent as { type?: string } | undefined;
     expect(structured?.type).toBe('pending');
+    await client.close();
+  });
+});
+
+describe('startGatewayHttp — state guards and audit', () => {
+  let dir: string;
+  const gateways: RunningGateway[] = [];
+
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'ars-guard-plugin-'));
+    await mkdir(join(dir, 'schemas'));
+    await writeFile(
+      join(dir, 'plugin.yml'),
+      'plugin: guarded\nsystem_base_url: http://fake-system.local\nauth:\n  mode: service_token_acting_user\n  service_token: tok\n',
+    );
+    await writeFile(
+      join(dir, 'schemas', 'g.yml'),
+      [
+        'schema_version: "0.1"',
+        'module: g',
+        'operations:',
+        '  - id: G-01',
+        '    name: close_ticket',
+        '    description: Close a ticket',
+        '    risk_level: contextual',
+        '    autonomy_policy: execute_immediately',
+        '    input_schema:',
+        '      ticket_id:',
+        '        type: string',
+        '        required: true',
+        '    state_guards:',
+        '      - description: ticket must be open',
+        '        query: "SELECT status FROM tickets WHERE id = :ticket_id"',
+        '        assert:',
+        '          status: open',
+        '        on_fail:',
+        '          message: Ticket is not open',
+        '          suggest: Reopen it first',
+        '',
+      ].join('\n'),
+    );
+    await writeFile(join(dir, 'executors.yml'), 'close_ticket:\n  method: POST\n  path: /tickets/close\n  body_from_input: true\n');
+  });
+
+  afterAll(async () => {
+    for (const g of gateways) await new Promise<void>((r) => g.httpServer.close(() => r()));
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  async function start(extra: Partial<Parameters<typeof startGatewayHttp>[0]>) {
+    const fetchMock = vi.fn(async () => new Response('{"ok":true}', { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    const gateway = await startGatewayHttp({
+      pluginDir: dir,
+      port: 0,
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      env: {},
+      onAudit: () => {},
+      ...extra,
+    });
+    gateways.push(gateway);
+    const client = new Client({ name: 'guard-test-client', version: '0.0.1' });
+    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${gateway.port}/mcp`)));
+    return { client, fetchMock };
+  }
+
+  it('without resolvers the guard is not enforced: the call executes and the description says so', async () => {
+    const { client, fetchMock } = await start({});
+    const { tools } = await client.listTools();
+    expect(tools.find((t) => t.name === 'close_ticket')?.description).toMatch(/not enforced/);
+    const result = await client.callTool({ name: 'close_ticket', arguments: { ticket_id: 'T-1' } });
+    expect(result.isError ?? false).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await client.close();
+  });
+
+  it('with a resolver whose result violates the assert, returns blocked_transition and never calls the executor', async () => {
+    const resolver = vi.fn(async () => [{ status: 'closed' }]);
+    const { client, fetchMock } = await start({ resolvers: { 'sql.query': resolver } });
+    const result = await client.callTool({ name: 'close_ticket', arguments: { ticket_id: 'T-1' } });
+    expect(resolver).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect((result.structuredContent as { type?: string }).type).toBe('blocked_transition');
+    await client.close();
+  });
+
+  it('delivers one audit event per call to the injected sink', async () => {
+    const events: Array<{ operation: string; decision: string }> = [];
+    const { client } = await start({
+      resolvers: { 'sql.query': async () => [{ status: 'open' }] },
+      onAudit: (e) => events.push(e),
+    });
+    await client.callTool({ name: 'close_ticket', arguments: { ticket_id: 'T-1' } });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ operation: 'close_ticket', decision: 'executed' });
     await client.close();
   });
 });

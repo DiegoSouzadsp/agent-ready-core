@@ -5,6 +5,8 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { loadPlugin } from './plugin.js';
 import { registerPluginTools } from './server.js';
 import type { LoadedPlugin } from './plugin.js';
+import type { AuditSink } from '@agent-ready/adapter-mcp';
+import type { AdapterResolvers } from '@agent-ready/core';
 
 export interface StartGatewayHttpOptions {
   pluginDir: string;
@@ -18,6 +20,8 @@ export interface StartGatewayHttpOptions {
   actingUserHeader?: string;
   fetchImpl?: typeof fetch;
   env?: NodeJS.ProcessEnv;
+  resolvers?: AdapterResolvers;
+  onAudit?: AuditSink;
 }
 
 export interface RunningGateway {
@@ -57,7 +61,12 @@ export async function startGatewayHttp(options: StartGatewayHttpOptions): Promis
         (Array.isArray(rawActingUser) ? rawActingUser[0] : rawActingUser)?.trim() || undefined;
 
       const server = new McpServer({ name: `ars-gateway-${plugin.name}`, version: '0.1.0' });
-      registerPluginTools(server, plugin, { actingUser, fetchImpl: options.fetchImpl });
+      registerPluginTools(server, plugin, {
+        actingUser,
+        fetchImpl: options.fetchImpl,
+        resolvers: options.resolvers,
+        onAudit: options.onAudit,
+      });
 
       // sessionIdGenerator: undefined → stateless mode (no session bookkeeping).
       const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });

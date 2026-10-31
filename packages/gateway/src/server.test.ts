@@ -74,4 +74,28 @@ describe('registerPluginTools', () => {
     const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit & { headers: Record<string, string> }];
     expect(init.headers['X-Acting-User']).toBe('user-42');
   });
+
+  it('writes audit JSON lines to stderr by default and uses an injected sink when given', async () => {
+    const plugin = await loadPlugin(REFERENCE_DIR, FAKE_ENV);
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse([]));
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const server = mockServer();
+      registerPluginTools(server as any, plugin, { fetchImpl });
+      const [, , handler] = server.registerTool.mock.calls.find((call) => call[0] === 'listar_itens')!;
+      await handler({});
+      const lines = write.mock.calls.map((c) => String(c[0])).filter((l) => l.includes('"operation":"listar_itens"'));
+      expect(lines).toHaveLength(1);
+      expect(JSON.parse(lines[0]).decision).toBe('executed');
+
+      const onAudit = vi.fn();
+      const server2 = mockServer();
+      registerPluginTools(server2 as any, plugin, { fetchImpl, onAudit });
+      const [, , handler2] = server2.registerTool.mock.calls.find((call) => call[0] === 'listar_itens')!;
+      await handler2({});
+      expect(onAudit).toHaveBeenCalledTimes(1);
+    } finally {
+      write.mockRestore();
+    }
+  });
 });
