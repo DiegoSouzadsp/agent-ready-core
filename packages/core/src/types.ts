@@ -140,6 +140,8 @@ export interface ValidationRule {
 /** A pre-condition that must be true before executing */
 export interface StateGuard {
   description: string;
+  /** Adapter predicate that resolves this guard; defaults to the generic 'sql.query' */
+  predicate?: string;
   /** SQL query to run */
   query: string;
   /** Expected result of the query */
@@ -364,6 +366,8 @@ export interface ResponseStrategy {
   detail_operation?: string;
   /** Guidance text pointing agent to the detail operation */
   guidance?: string;
+  /** Result fields kept when mode is 'summary'; absent means the result is returned whole */
+  summary_fields?: string[];
   /** Page size for paginated mode */
   page_size?: number;
 }

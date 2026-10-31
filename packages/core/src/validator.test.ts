@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { validateInput, applyDefaults, validateForeignKeys, FK_PREDICATE } from '../src/validator.js';
 import { createAdapter, noopAdapter } from '../src/adapter.js';
+import { validateResponseStrategy } from '../src/validator.js';
+import { loadSchema } from '../src/loader.js';
 import type { Operation } from '../src/types.js';
 
 // ─────────────────────────────────────────────
@@ -477,5 +479,52 @@ describe('validateForeignKeys', () => {
     );
     expect(errors).toHaveLength(1);
     expect(errors[0].field).toBe('membro_id');
+  });
+});
+
+describe('risk_level confirmation always needs human confirmation', () => {
+  const bare = (risk_level: Operation['risk_level']): Operation => ({
+    id: 'OP-X',
+    name: 'op_x',
+    risk_level,
+    input_schema: { nota: { type: 'string', required: false } },
+  });
+
+  it('requires confirmation for confirmation without autonomy_policy or human_confirmation', () => {
+    expect(validateInput(bare('confirmation'), {}).needsHumanConfirmation).toBe(true);
+  });
+
+  it.each(['free', 'validated', 'contextual'] as const)('does not require it alone for %s', (level) => {
+    expect(validateInput(bare(level), {}).needsHumanConfirmation).toBe(false);
+  });
+});
+
+describe('summary_fields validation', () => {
+  const withFields = (summary_fields: unknown): Operation => ({
+    ...baseOp,
+    response_strategy: { mode: 'summary', summary_fields: summary_fields as string[] },
+  });
+
+  it('accepts a list of strings', () => {
+    expect(validateResponseStrategy(withFields(['id', 'status']))).toEqual([]);
+  });
+
+  it.each([[42], ['id'], [['id', 3]]])('rejects %j', (bad) => {
+    expect(validateResponseStrategy(withFields(bad))).toHaveLength(1);
+  });
+
+  it('makes loadSchema reject an invalid summary_fields', () => {
+    const yml = `schema_version: "0.1"
+module: m
+operations:
+  - id: A
+    name: a
+    risk_level: free
+    input_schema: {}
+    response_strategy:
+      mode: summary
+      summary_fields: id
+`;
+    expect(() => loadSchema(yml)).toThrow(/summary_fields/);
   });
 });

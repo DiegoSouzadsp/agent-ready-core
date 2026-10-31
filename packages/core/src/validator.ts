@@ -7,6 +7,8 @@ import type {
 import type { Adapter } from './adapter.js';
 import { getInputFields } from './loader.js';
 
+export { validateResponseStrategy } from './loader.js';
+
 // ─────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────
@@ -315,6 +317,7 @@ export function validateInput(
 
   // Also flag if operation itself requires confirmation
   if (
+    operation.risk_level === 'confirmation' ||
     operation.autonomy_policy === 'require_explicit_confirmation' ||
     operation.human_confirmation?.required
   ) {

@@ -40,6 +40,13 @@ export function loadSchema(yamlContent: string): AgentReadySchema {
     return op as unknown as Operation;
   });
 
+  const strategyErrors = operations.flatMap((op) =>
+    validateResponseStrategy(op).map((m) => `operation "${op.name}": ${m}`),
+  );
+  if (strategyErrors.length > 0) {
+    throw new Error(`[agent-ready] Invalid response_strategy: ${strategyErrors.join('; ')}`);
+  }
+
   return {
     schema_version: String(obj.schema_version),
     module: String(obj.module),
@@ -47,6 +54,19 @@ export function loadSchema(yamlContent: string): AgentReadySchema {
     updated_at: obj.updated_at ? String(obj.updated_at) : undefined,
     operations,
   };
+}
+
+/**
+ * Check the declarative shape of an operation's response_strategy.
+ * Returns one message per problem; an empty list means valid.
+ */
+export function validateResponseStrategy(operation: Operation): string[] {
+  const fields = operation.response_strategy?.summary_fields;
+  if (fields === undefined) return [];
+  if (!Array.isArray(fields) || fields.some((f) => typeof f !== 'string')) {
+    return ['response_strategy.summary_fields must be a list of strings'];
+  }
+  return [];
 }
 
 /**
