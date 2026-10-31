@@ -19,10 +19,6 @@ export default defineConfig({
 						{ label: 'Adapters', slug: 'guides/adapters' },
 					],
 				},
-				{
-					label: 'Reference',
-					items: [{ autogenerate: { directory: 'reference' } }],
-				},
 			],
 		}),
 	],
