@@ -157,12 +157,29 @@ field_name:
 
 ```yaml
 - description: string
+  predicate: string               # optional: adapter predicate that resolves the guard (default: sql.query)
   query: string                   # SQL that returns the current state
   assert: map                     # condition that must hold true
   on_fail:
     message: string
     suggest: string                # suggested next action
 ```
+
+The runtime resolves the guard with `predicate` (default `sql.query`, which runs `query` with the call input as bind parameters) and compares the first returned row with `assert` by subset equality: every key in `assert` must be present with an equal value. A guard whose predicate has no configured resolver is declared but not enforced.
+
+---
+
+## ResponseStrategy structure
+
+```yaml
+mode: summary | full | paginated
+detail_operation: string          # operation that returns the full detail (summary mode)
+summary_fields: list[string]      # optional: result fields kept in summary mode
+guidance: string
+page_size: int
+```
+
+In `summary` mode with `summary_fields`, the success response keeps only those fields and points to `detail_operation` in `next`. Without `summary_fields` the result is returned whole. A `summary_fields` that is not a list of strings is rejected when the schema is loaded.
 
 ---
 
@@ -258,7 +275,7 @@ The agent is the **consumer** of the schema; it does not enforce it. Steps 1-4 a
 
 ### Who enforces
 
-The rules in this schema are enforced by the runtime or the gateway, not requested of the agent. An agent that ignores the schema, or whose prompt says otherwise, still cannot execute a `confirmation` operation or skip input validation, because the executor is never reached. Annotations and client-side hooks can complement this, but the schema is the single source of the policy. Note that the v0.1 reference runtime does not yet wire every step (for example, state guards are resolved through core adapters but are not yet part of the MCP pipeline); the list above is the specified behavior.
+The rules in this schema are enforced by the runtime or the gateway, not requested of the agent. An agent that ignores the schema, or whose prompt says otherwise, still cannot execute a `confirmation` operation or skip input validation, because the executor is never reached. Annotations and client-side hooks can complement this, but the schema is the single source of the policy. Note that the reference MCP runtime enforces state guards only when resolvers are configured for their predicates; guards without a resolver are declared but not enforced. The list above is the specified behavior.
 
 ---
 
