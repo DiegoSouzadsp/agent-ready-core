@@ -6,7 +6,20 @@ import type {
 } from '@agent-ready/core';
 import type { ExecutorFn, McpToolResult } from './types.js';
 
+/** The part of McpServer that confirmation through elicitation needs. */
+export interface ElicitationHost {
+  server?: {
+    getClientCapabilities?: () => { elicitation?: unknown } | undefined;
+    elicitInput?: (params: {
+      message: string;
+      requestedSchema: Record<string, unknown>;
+    }) => Promise<{ action: string; content?: Record<string, unknown> }>;
+  };
+}
+
 export interface RunOperationOptions {
+  /** MCP server used to ask the human for confirmation through elicitation. */
+  server?: ElicitationHost;
   /** Resolvers that evaluate state_guards; a guard whose predicate is absent here is not enforced. */
   resolvers?: AdapterResolvers;
 }
@@ -83,6 +96,47 @@ function guardPasses(result: unknown, assertion: Record<string, unknown>): boole
   return entries.every(([key, expected]) => sameValue((row as Record<string, unknown>)[key], expected));
 }
 
+type Confirmation = 'confirmed' | 'declined' | 'unavailable';
+
+async function askHuman(
+  op: OperationHandle,
+  input: Record<string, unknown>,
+  host: ElicitationHost | undefined,
+): Promise<Confirmation> {
+  const srv = host?.server;
+  if (!srv?.elicitInput || !srv.getClientCapabilities?.()?.elicitation) return 'unavailable';
+  try {
+    const response = await srv.elicitInput({
+      message: op.signpost('pending', input).guidance,
+      requestedSchema: {
+        type: 'object',
+        properties: { confirm: { type: 'boolean' } },
+        required: ['confirm'],
+      },
+    });
+    return response.action === 'accept' && response.content?.confirm === true
+      ? 'confirmed'
+      : 'declined';
+  } catch {
+    // invariant: a failed or timed-out elicitation never executes; it degrades to pending.
+    return 'unavailable';
+  }
+}
+
+function declinedResult(op: OperationHandle, input: Record<string, unknown>): McpToolResult {
+  const pending = op.signpost('pending', input);
+  return toMcpResult(
+    {
+      ...pending,
+      guidance: `Operation "${op.definition.name}" was declined by the human and was not executed.`,
+      _context: { ...pending._context, what_happened: 'Human declined confirmation' },
+      reason: 'The human declined or cancelled the confirmation request.',
+      what_to_do: 'Do not retry unless the user asks for it again.',
+    },
+    false,
+  );
+}
+
 type GuardOutcome = { blocked: StateGuard } | { error: Error } | null;
 
 async function evaluateGuards(
@@ -150,8 +204,11 @@ export async function runOperation(
     );
   }
 
+  // invariant: confirmation is asked through MCP elicitation only when the client advertises it; otherwise the call returns pending.
   if (result.needsHumanConfirmation) {
-    return toMcpResult(op.signpost('pending', input), false);
+    const answer = await askHuman(op, input, options.server);
+    if (answer === 'unavailable') return toMcpResult(op.signpost('pending', input), false);
+    if (answer === 'declined') return declinedResult(op, input);
   }
 
   if (!executor) {

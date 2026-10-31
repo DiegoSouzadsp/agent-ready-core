@@ -261,3 +261,85 @@ describe('runOperation - state guards', () => {
     expect(executor).not.toHaveBeenCalled();
   });
 });
+
+describe('runOperation - confirmation through elicitation', () => {
+  const fakeServer = (elicitation: unknown, elicitInput: any) => ({
+    server: { getClientCapabilities: () => (elicitation ? { elicitation } : {}), elicitInput },
+  });
+
+  const confirmOp = new OperationHandle(
+    {
+      id: 'OP-E-01',
+      name: 'apagar_chamado',
+      risk_level: 'confirmation',
+      input_schema: { chamado_id: { type: 'int', required: true } },
+      human_confirmation: { message_template: 'Delete ticket {{chamado_id}}?' },
+    } satisfies Operation,
+    noopAdapter(),
+  );
+
+  it('elicitation advertised calls elicitInput with rendered template', async () => {
+    const elicitInput = vi.fn().mockResolvedValue({ action: 'accept', content: { confirm: true } });
+    await runOperation(confirmOp, vi.fn().mockResolvedValue({}), { chamado_id: 5 }, {}, { server: fakeServer({}, elicitInput) });
+
+    expect(elicitInput).toHaveBeenCalledTimes(1);
+    expect(elicitInput).toHaveBeenCalledWith({
+      message: 'Delete ticket 5?',
+      requestedSchema: {
+        type: 'object',
+        properties: { confirm: { type: 'boolean' } },
+        required: ['confirm'],
+      },
+    });
+  });
+
+  it('elicitation accept true executes', async () => {
+    const executor = vi.fn().mockResolvedValue({ deleted: true });
+    const elicitInput = vi.fn().mockResolvedValue({ action: 'accept', content: { confirm: true } });
+    const result = await runOperation(confirmOp, executor, { chamado_id: 5 }, {}, { server: fakeServer({}, elicitInput) });
+
+    expect(executor).toHaveBeenCalledTimes(1);
+    expect((result.structuredContent as any).type).toBe('success');
+  });
+
+  it('elicitation decline cancel false do not execute', async () => {
+    for (const answer of [
+      { action: 'decline' },
+      { action: 'cancel' },
+      { action: 'accept', content: { confirm: false } },
+    ]) {
+      const executor = vi.fn();
+      const result = await runOperation(
+        confirmOp,
+        executor,
+        { chamado_id: 5 },
+        {},
+        { server: fakeServer({}, vi.fn().mockResolvedValue(answer)) },
+      );
+      expect(executor).not.toHaveBeenCalled();
+      expect((result.structuredContent as any).type).toBe('pending');
+      expect(result.content[0].text).toContain('declined');
+    }
+  });
+
+  it('no elicitation capability falls back to pending', async () => {
+    const elicitInput = vi.fn();
+    const executor = vi.fn();
+    for (const server of [fakeServer(undefined, elicitInput), {}, undefined]) {
+      const result = await runOperation(confirmOp, executor, { chamado_id: 5 }, {}, { server });
+      expect((result.structuredContent as any).type).toBe('pending');
+      expect(result.content[0].text).toBe('Delete ticket 5?');
+    }
+    expect(elicitInput).not.toHaveBeenCalled();
+    expect(executor).not.toHaveBeenCalled();
+  });
+
+  it('elicitation failure fails closed to pending', async () => {
+    const executor = vi.fn();
+    const elicitInput = vi.fn().mockRejectedValue(new Error('timeout'));
+    const result = await runOperation(confirmOp, executor, { chamado_id: 5 }, {}, { server: fakeServer({}, elicitInput) });
+
+    expect((result.structuredContent as any).type).toBe('pending');
+    expect(executor).not.toHaveBeenCalled();
+  });
+});
