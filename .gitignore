@@ -12,3 +12,9 @@ docs/implementation_plan.md
 
 # unpublished content drafts (posts, article) — not part of the public repo
 docs/drafts/
+
+# internal process state (NeoHarness / tlc / spec-driven) — never public
+.specs/
+.tlc/
+.neoharness/
+.claude/
