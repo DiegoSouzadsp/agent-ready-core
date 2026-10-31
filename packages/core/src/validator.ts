@@ -347,6 +347,9 @@ export function validateInput(
  */
 export const FK_PREDICATE = 'entity.exists';
 
+/** Predicate a StateGuard uses when it names none; an adapter registers it to run guard queries. */
+export const DEFAULT_GUARD_PREDICATE = 'sql.query';
+
 /**
  * Validate foreign_key constraints against a real backend via the adapter.
  *

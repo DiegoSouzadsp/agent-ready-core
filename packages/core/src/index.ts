@@ -169,6 +169,11 @@ export class OperationHandle {
     return this._adapter.resolve(predicateName, params);
   }
 
+  /** True when the adapter behind this handle can resolve the predicate. */
+  hasResolver(predicateName: string): boolean {
+    return this._adapter.has(predicateName);
+  }
+
   /**
    * Validate foreign_key constraints via the adapter's FK_PREDICATE
    * ('entity.exists') resolver. Complements validate(), which is synchronous

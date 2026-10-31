@@ -61,5 +61,15 @@ describe('createSqliteResolvers', () => {
     expect(result).toEqual({ status: 'open' });
     expect(() => resolvers['sql.query']({ id: 3 })).toThrow(/query/);
   });
+
+  it('sql.query refuses statements that are not SELECT and accepts a leading space', () => {
+    const mockStmt = { get: vi.fn().mockReturnValue({ n: 1 }), run: vi.fn() };
+    vi.mocked(mockDb.prepare).mockReturnValue(mockStmt as any);
+    const resolvers = createSqliteResolvers(mockDb, {});
+
+    expect(() => resolvers['sql.query']({ query: 'UPDATE t SET a = 1' })).toThrow(/SELECT/);
+    expect(mockStmt.run).not.toHaveBeenCalled();
+    expect(resolvers['sql.query']({ query: '  select n from t' })).toEqual({ n: 1 });
+  });
 });
 

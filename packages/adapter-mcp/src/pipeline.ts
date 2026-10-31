@@ -1,3 +1,4 @@
+import { DEFAULT_GUARD_PREDICATE } from '@agent-ready/core';
 import type {
   AdapterResolvers,
   OperationHandle,
@@ -53,8 +54,15 @@ export interface RunOperationOptions {
   resolvers?: AdapterResolvers;
 }
 
-/** Default guard predicate when a StateGuard names none. */
-export const DEFAULT_GUARD_PREDICATE = 'sql.query';
+/** True when a guard has a resolver, in the options or in the operation's own adapter. */
+export function guardEnforced(
+  op: OperationHandle,
+  guard: StateGuard,
+  resolvers: AdapterResolvers | undefined,
+): boolean {
+  const predicate = guard.predicate ?? DEFAULT_GUARD_PREDICATE;
+  return Boolean(resolvers?.[predicate]) || op.hasResolver(predicate);
+}
 
 function signpostText(signpost: SignpostResult): string {
   const lines = [signpost.guidance];
@@ -186,10 +194,12 @@ async function evaluateGuards(
   resolvers: AdapterResolvers | undefined,
 ): Promise<GuardOutcome> {
   for (const guard of op.definition.state_guards ?? []) {
-    const resolver = resolvers?.[guard.predicate ?? DEFAULT_GUARD_PREDICATE];
-    if (!resolver) continue;
+    if (!guardEnforced(op, guard, resolvers)) continue;
+    const predicate = guard.predicate ?? DEFAULT_GUARD_PREDICATE;
+    const params = { ...input, query: guard.query };
+    const resolver = resolvers?.[predicate];
     try {
-      const result = await resolver({ ...input, query: guard.query });
+      const result = resolver ? await resolver(params) : await op.resolveGuard(predicate, params);
       if (!guardPasses(result, guard.assert)) return { blocked: guard };
     } catch (err) {
       // invariant: a guard that cannot be evaluated blocks the call rather than letting it through.
@@ -223,7 +233,17 @@ export async function runOperation(
   options: RunOperationOptions = {},
 ): Promise<McpToolResult> {
   const started = Date.now();
-  const outcome = await decide(op, executor, rawInput, context, options);
+  let outcome: Outcome;
+  try {
+    outcome = await decide(op, executor, rawInput, context, options);
+  } catch (err) {
+    // invariant: an unexpected throw still yields an error result and exactly one audit event.
+    outcome = {
+      result: errorResult(`Operation "${op.definition.name}" failed: ${(err as Error).message}`),
+      decision: 'error',
+      input: rawInput,
+    };
+  }
   emitAudit(op, rawInput, outcome, Date.now() - started, options.onAudit);
   return outcome.result;
 }
@@ -311,8 +331,13 @@ async function decide(
     );
   }
 
+  // why: an executor may return nothing; the call already happened, so it must still report success.
+  const data =
+    execResult !== null && typeof execResult === 'object' && !Array.isArray(execResult)
+      ? execResult
+      : {};
   return outcome(
-    successResult(applyResponseStrategy(op, op.signpost('success', execResult), execResult)),
+    successResult(applyResponseStrategy(op, op.signpost('success', data), data)),
     confirmed ? 'confirmed' : 'executed',
   );
 }

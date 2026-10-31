@@ -39,7 +39,7 @@ describe('runOperation', () => {
     expect(result.isError).toBe(true);
     expect((result.structuredContent as any).type).toBe('validation_error');
     expect((result.structuredContent as any).errors[0].field).toBe('valor');
-    expect(result.content[0].text).toContain((result.structuredContent as any).guidance);
+    expect(result.content[0].text.startsWith((result.structuredContent as any).guidance)).toBe(true);
     expect(result.content[0].text.length).toBeGreaterThan(0);
     expect(executor).not.toHaveBeenCalled();
   });
@@ -475,5 +475,108 @@ describe('runOperation - text carries the whole signpost', () => {
     expect(text).toContain('Reason:');
     expect(text).toContain('What to do:');
     expect(text).toMatch(/\[valor\] \(INVALID_TYPE\) /);
+  });
+});
+
+describe('runOperation - hardening', () => {
+  const fkOp = (adapter: any, extra: Partial<Operation> = {}) =>
+    new OperationHandle(
+      {
+        id: 'OP-H-01',
+        name: 'op_h',
+        risk_level: 'validated',
+        input_schema: { ref_id: { type: 'int', required: true, foreign_key: { table: 't' } } },
+        ...extra,
+      } satisfies Operation,
+      adapter,
+    );
+
+  it('a throwing fk resolver yields an error result and exactly one audit event', async () => {
+    const events: AuditEvent[] = [];
+    const executor = vi.fn();
+    const op = fkOp(createAdapter({ 'entity.exists': () => { throw new Error('db down'); } }));
+    const result = await runOperation(op, executor, { ref_id: 1 }, {}, { onAudit: (e) => events.push(e) });
+
+    expect(result.isError).toBe(true);
+    expect(executor).not.toHaveBeenCalled();
+    expect(events).toHaveLength(1);
+    expect(events[0].decision).toBe('error');
+  });
+
+  it('an executor that returns nothing still reports success, also under a summary strategy', async () => {
+    const op = new OperationHandle(
+      {
+        id: 'OP-H-02',
+        name: 'op_void',
+        risk_level: 'free',
+        input_schema: {},
+        response_strategy: { mode: 'summary', summary_fields: ['id'], detail_operation: 'ver' },
+      } satisfies Operation,
+      noopAdapter(),
+    );
+    for (const value of [undefined, null, 'text']) {
+      const result = await runOperation(op, vi.fn().mockResolvedValue(value), {});
+      expect(result.isError).toBe(false);
+      expect((result.structuredContent as any).type).toBe('success');
+    }
+  });
+
+  it('next uses response_strategy.guidance as the reason when declared', async () => {
+    const op = new OperationHandle(
+      {
+        id: 'OP-H-03',
+        name: 'listar_h',
+        risk_level: 'free',
+        input_schema: {},
+        response_strategy: { mode: 'summary', summary_fields: ['id'], detail_operation: 'ver_h', guidance: 'Open one for details' },
+      } satisfies Operation,
+      noopAdapter(),
+    );
+    const result = await runOperation(op, vi.fn().mockResolvedValue({ id: 1, x: 2 }), {});
+    expect((result.structuredContent as any).next).toEqual([{ operation: 'ver_h', reason: 'Open one for details' }]);
+  });
+
+  const guarded = new OperationHandle(
+    {
+      id: 'OP-H-04',
+      name: 'op_g',
+      risk_level: 'contextual',
+      input_schema: {},
+      state_guards: [{ description: 'g', query: 'SELECT 1', assert: { ok: true }, on_fail: { message: 'no' } }],
+    } satisfies Operation,
+    noopAdapter(),
+  );
+  const outcomeFor = async (value: unknown, assertValue: unknown = true) => {
+    const op = new OperationHandle(
+      { ...guarded.definition, state_guards: [{ ...guarded.definition.state_guards![0], assert: { ok: assertValue } }] },
+      noopAdapter(),
+    );
+    const executor = vi.fn().mockResolvedValue({});
+    const result = await runOperation(op, executor, {}, {}, { resolvers: { 'sql.query': () => value } });
+    return { type: (result.structuredContent as any).type, called: executor.mock.calls.length };
+  };
+
+  it('guard assertion compares booleans and 0/1 both ways', async () => {
+    expect(await outcomeFor({ ok: 1 }, true)).toEqual({ type: 'success', called: 1 });
+    expect(await outcomeFor({ ok: 0 }, true)).toEqual({ type: 'blocked_transition', called: 0 });
+    expect(await outcomeFor({ ok: true }, 1)).toEqual({ type: 'success', called: 1 });
+    expect(await outcomeFor({ ok: false }, 1)).toEqual({ type: 'blocked_transition', called: 0 });
+    expect(await outcomeFor({ ok: 0 }, false)).toEqual({ type: 'success', called: 1 });
+  });
+
+  it('guard with an empty or null result is blocked', async () => {
+    expect(await outcomeFor([])).toEqual({ type: 'blocked_transition', called: 0 });
+    expect(await outcomeFor(null)).toEqual({ type: 'blocked_transition', called: 0 });
+  });
+
+  it('guard resolves through the operation adapter when options carry no resolver', async () => {
+    const fn = vi.fn().mockResolvedValue({ ok: false });
+    const op = new OperationHandle(guarded.definition, createAdapter({ 'sql.query': fn }));
+    const executor = vi.fn();
+    const result = await runOperation(op, executor, {});
+
+    expect((result.structuredContent as any).type).toBe('blocked_transition');
+    expect(fn).toHaveBeenCalledWith({ query: 'SELECT 1' });
+    expect(executor).not.toHaveBeenCalled();
   });
 });

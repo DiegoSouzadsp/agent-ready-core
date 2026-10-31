@@ -1,3 +1,4 @@
+import { DEFAULT_GUARD_PREDICATE } from '@agent-ready/core';
 import type { AdapterResolvers } from '@agent-ready/core';
 import type { Database } from 'better-sqlite3';
 
@@ -8,6 +9,16 @@ export type SqliteResolverConfig = {
    */
   [predicateName: string]: string | ((db: Database, params: Record<string, unknown>) => any);
 };
+
+function isSelect(query: string): boolean {
+  return query.trim().toUpperCase().startsWith('SELECT');
+}
+
+function execute(db: Database, query: string, params: Record<string, unknown>) {
+  const sql = query.trim();
+  const stmt = db.prepare(sql);
+  return isSelect(sql) ? stmt.get(params) : stmt.run(params);
+}
 
 /**
  * Creates AdapterResolvers for a SQLite database.
@@ -22,18 +33,20 @@ export function createSqliteResolvers(
 ): AdapterResolvers {
   const resolvers: AdapterResolvers = {
     // why: lets state_guards run their own SELECT without declaring a named predicate per guard.
-    'sql.query': (params: Record<string, unknown>) => {
+    [DEFAULT_GUARD_PREDICATE]: (params: Record<string, unknown>) => {
       const { query, ...rest } = params;
       if (typeof query !== 'string') {
         throw new Error('sql.query requires a "query" string param');
+      }
+      if (!isSelect(query)) {
+        throw new Error('sql.query only runs SELECT statements; a state guard must not write');
       }
       const bind: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(rest)) {
         if (typeof v === 'boolean') bind[k] = v ? 1 : 0;
         else if (v === null || ['string', 'number', 'bigint'].includes(typeof v)) bind[k] = v;
       }
-      const stmt = db.prepare(query);
-      return query.trim().toUpperCase().startsWith('SELECT') ? stmt.get(bind) : stmt.run(bind);
+      return execute(db, query, bind);
     },
   };
 
@@ -42,17 +55,7 @@ export function createSqliteResolvers(
       if (typeof handler === 'function') {
         return handler(db, params);
       }
-
-      // If it's a string, we prepare and execute.
-      // We assume it's a SELECT if it starts with SELECT, returning the first row.
-      const queryStr = handler.trim();
-      const stmt = db.prepare(queryStr);
-      
-      if (queryStr.toUpperCase().startsWith('SELECT')) {
-        return stmt.get(params);
-      }
-      
-      return stmt.run(params);
+      return execute(db, handler, params);
     };
   }
 

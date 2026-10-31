@@ -361,3 +361,47 @@ describe('registerArsTools - wrong type is never a protocol error', () => {
     expect(result.content[0].text).toContain('[valor]');
   });
 });
+
+describe('registerArsTools - guards through the agent adapter', () => {
+  const SCHEMA = `
+schema_version: "0.1"
+module: tickets
+operations:
+  - id: OP-01
+    name: fechar_chamado
+    risk_level: contextual
+    autonomy_policy: execute_after_validation
+    input_schema:
+      chamado_id:
+        type: int
+        required: true
+    state_guards:
+      - description: ticket is open
+        query: SELECT status FROM tickets WHERE id = @chamado_id
+        assert:
+          status: open
+        on_fail:
+          message: Ticket already closed
+`;
+
+  it('evaluates and discloses guards by the effective adapter, without options.resolvers', async () => {
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      const sqlQuery = vi.fn().mockResolvedValue({ status: 'closed' });
+      const agent = AgentReady.fromYAML(SCHEMA, { 'sql.query': sqlQuery });
+      const server = mockServer();
+      const executor = vi.fn();
+      registerArsTools(server as any, agent, { fechar_chamado: executor });
+
+      const [, config, handler] = server.registerTool.mock.calls.find((c) => c[0] === 'fechar_chamado')!;
+      expect(config.description).not.toContain('not enforced');
+      expect(write).not.toHaveBeenCalled();
+      const result = await handler({ chamado_id: 1 });
+      expect(sqlQuery).toHaveBeenCalledTimes(1);
+      expect(result.structuredContent.type).toBe('blocked_transition');
+      expect(executor).not.toHaveBeenCalled();
+    } finally {
+      write.mockRestore();
+    }
+  });
+});

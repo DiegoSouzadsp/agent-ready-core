@@ -1,9 +1,9 @@
 import { z } from 'zod';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { OperationHandle, createAdapter } from '@agent-ready/core';
-import type { AdapterResolvers, AgentReady, Operation } from '@agent-ready/core';
+import { OperationHandle, createAdapter, FK_PREDICATE } from '@agent-ready/core';
+import type { AdapterResolvers, AgentReady } from '@agent-ready/core';
 import { operationInputSchema, operationToolDescription, operationToolAnnotations } from './schema.js';
-import { runOperation, DEFAULT_GUARD_PREDICATE } from './pipeline.js';
+import { runOperation, guardEnforced } from './pipeline.js';
 import type { AuditSink, ElicitationHost } from './pipeline.js';
 import type { ExecutorMap, McpToolResult } from './types.js';
 
@@ -15,7 +15,8 @@ export {
   operationToolDescription,
   operationToolAnnotations,
 } from './schema.js';
-export { runOperation, DEFAULT_GUARD_PREDICATE } from './pipeline.js';
+export { runOperation } from './pipeline.js';
+export { DEFAULT_GUARD_PREDICATE } from '@agent-ready/core';
 export { stderrAuditSink } from './pipeline.js';
 export type {
   RunOperationOptions,
@@ -47,10 +48,8 @@ export interface RegisterArsToolsOptions {
   onAudit?: AuditSink;
 }
 
-function unenforcedGuardCount(opDef: Operation, resolvers: AdapterResolvers | undefined): number {
-  return (opDef.state_guards ?? []).filter(
-    (g) => !resolvers?.[g.predicate ?? DEFAULT_GUARD_PREDICATE],
-  ).length;
+function unenforcedGuardCount(op: OperationHandle, resolvers: AdapterResolvers | undefined): number {
+  return (op.definition.state_guards ?? []).filter((g) => !guardEnforced(op, g, resolvers)).length;
 }
 
 /**
@@ -69,19 +68,22 @@ export function registerArsTools(
   options: RegisterArsToolsOptions = {},
 ): void {
   const resolvers = options.resolvers;
-  const adapter = resolvers && Object.keys(resolvers).length > 0 ? createAdapter(resolvers) : undefined;
+  const fkAdapter = resolvers?.[FK_PREDICATE] ? createAdapter(resolvers) : undefined;
   const unenforced: string[] = [];
 
   for (const opDef of agent.allOperations) {
     const inputSchema = operationInputSchema(opDef);
-    const unenforcedGuards = unenforcedGuardCount(opDef, resolvers);
+    const base = agent.operation(opDef.name);
+    // why: foreign keys resolve through the handle's adapter, so resolvers passed here only serve FK when the agent has none.
+    const handle = fkAdapter && !base.hasResolver(FK_PREDICATE) ? new OperationHandle(opDef, fkAdapter) : base;
+    const unenforcedGuards = unenforcedGuardCount(handle, resolvers);
     if (unenforcedGuards > 0) unenforced.push(`${opDef.name} (${unenforcedGuards})`);
     const description = operationToolDescription(opDef, { unenforcedGuards });
     const annotations = operationToolAnnotations(opDef);
 
     const handler = async (input: Record<string, unknown>) =>
       runOperation(
-        adapter ? new OperationHandle(opDef, adapter) : agent.operation(opDef.name),
+        handle,
         executors[opDef.name],
         input,
         options.context ?? {},
