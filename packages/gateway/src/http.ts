@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { createServer } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -31,14 +33,41 @@ export interface RunningGateway {
 }
 
 /**
- * Serve a plugin over Streamable HTTP at POST /mcp, STATELESS: each request gets
- * an ephemeral McpServer whose executors are bound to that request's acting user.
+ * why: Streamable HTTP at /mcp keeps sessions, one McpServer per
+ * session (so the client's capabilities, e.g. elicitation, survive between calls),
+ * while the acting user is read from each request.
  * Identity is therefore per-call — exactly what a multi-user host (one MCP
  * connection, many end users) needs to keep permissions enforced at the source.
  */
 export async function startGatewayHttp(options: StartGatewayHttpOptions): Promise<RunningGateway> {
   const plugin = await loadPlugin(options.pluginDir, options.env ?? process.env);
   const inboundHeader = (options.actingUserHeader ?? 'x-acting-user').toLowerCase();
+
+  const sessions = new Map<string, { transport: StreamableHTTPServerTransport; server: McpServer }>();
+  const actingUserStore = new AsyncLocalStorage<string | undefined>();
+
+  // why: elicitation needs the client's initialize capabilities at tools/call time, so one McpServer lives per session.
+  async function createSession() {
+    const server = new McpServer({ name: `ars-gateway-${plugin.name}`, version: '0.1.0' });
+    registerPluginTools(server, plugin, {
+      getActingUser: () => actingUserStore.getStore(),
+      fetchImpl: options.fetchImpl,
+      resolvers: options.resolvers,
+      onAudit: options.onAudit,
+    });
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (id) => {
+        sessions.set(id, { transport, server });
+      },
+    });
+    transport.onclose = () => {
+      if (transport.sessionId) sessions.delete(transport.sessionId);
+      void server.close();
+    };
+    await server.connect(transport);
+    return { transport, server };
+  }
 
   const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     const url = (req.url ?? '').split('?')[0];
@@ -59,24 +88,21 @@ export async function startGatewayHttp(options: StartGatewayHttpOptions): Promis
       const rawActingUser = req.headers[inboundHeader];
       const actingUser =
         (Array.isArray(rawActingUser) ? rawActingUser[0] : rawActingUser)?.trim() || undefined;
+      const rawSession = req.headers['mcp-session-id'];
+      const sessionId = Array.isArray(rawSession) ? rawSession[0] : rawSession;
 
-      const server = new McpServer({ name: `ars-gateway-${plugin.name}`, version: '0.1.0' });
-      registerPluginTools(server, plugin, {
-        actingUser,
-        fetchImpl: options.fetchImpl,
-        resolvers: options.resolvers,
-        onAudit: options.onAudit,
-      });
+      let session = sessionId ? sessions.get(sessionId) : undefined;
+      if (!session) {
+        if (sessionId || req.method !== 'POST') {
+          res.writeHead(sessionId ? 404 : 400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: sessionId ? 'Unknown session.' : 'Missing mcp-session-id header.' }));
+          return;
+        }
+        session = await createSession();
+      }
 
-      // sessionIdGenerator: undefined → stateless mode (no session bookkeeping).
-      const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
-      res.on('close', () => {
-        void transport.close();
-        void server.close();
-      });
-
-      await server.connect(transport);
-      await transport.handleRequest(req, res);
+      // why: identity is per call even though the server is per session, so it is read from the request in flight.
+      await actingUserStore.run(actingUser, () => session!.transport.handleRequest(req, res));
     } catch (err) {
       if (!res.headersSent) {
         res.writeHead(500, { 'Content-Type': 'application/json' });

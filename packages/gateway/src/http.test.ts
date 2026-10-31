@@ -122,8 +122,7 @@ describe('startGatewayHttp — real client elicitation', () => {
     return { result, fetchMock, asked };
   }
 
-  // hazard: http.ts builds a stateless server per request, so the initialize that carries the client's elicitation capability never reaches it; this proof fails until the gateway keeps sessions.
-  it.fails('real client elicitation accept executes decline does not', async () => {
+  it('real client elicitation accept executes decline does not', async () => {
     const accepted = await run({ action: 'accept', content: { confirm: true } });
     expect(accepted.asked).toHaveBeenCalledTimes(1);
     expect(accepted.fetchMock).toHaveBeenCalledTimes(1);

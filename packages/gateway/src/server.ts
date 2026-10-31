@@ -20,6 +20,8 @@ export interface CreateGatewayServerOptions {
 
 export interface RegisterPluginToolsOptions {
   actingUser?: string;
+  /** Resolved on every executor call; takes precedence over actingUser. */
+  getActingUser?: () => string | undefined;
   fetchImpl?: typeof fetch;
   context?: Record<string, unknown>;
   exposeContract?: boolean;
@@ -59,7 +61,7 @@ export function registerPluginTools(
 ): void {
   const executors = buildExecutorMap(plugin, {
     fetchImpl: opts.fetchImpl,
-    getActingUser: () => opts.actingUser,
+    getActingUser: opts.getActingUser ?? (() => opts.actingUser),
   });
 
   registerArsTools(server, plugin.agent, executors, {
