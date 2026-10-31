@@ -4,7 +4,7 @@ import { OperationHandle, createAdapter } from '@agent-ready/core';
 import type { AdapterResolvers, AgentReady, Operation } from '@agent-ready/core';
 import { operationInputSchema, operationToolDescription, operationToolAnnotations } from './schema.js';
 import { runOperation, DEFAULT_GUARD_PREDICATE } from './pipeline.js';
-import type { ElicitationHost } from './pipeline.js';
+import type { AuditSink, ElicitationHost } from './pipeline.js';
 import type { ExecutorMap, McpToolResult } from './types.js';
 
 export type { ExecutorFn, ExecutorMap, McpToolResult } from './types.js';
@@ -16,7 +16,14 @@ export {
   operationToolAnnotations,
 } from './schema.js';
 export { runOperation, DEFAULT_GUARD_PREDICATE } from './pipeline.js';
-export type { RunOperationOptions, ElicitationHost } from './pipeline.js';
+export { stderrAuditSink } from './pipeline.js';
+export type {
+  RunOperationOptions,
+  ElicitationHost,
+  AuditEvent,
+  AuditSink,
+  AuditDecision,
+} from './pipeline.js';
 
 /** Name of the meta-tool that returns an operation's full ARS contract. */
 export const CONTRACT_TOOL_NAME = 'get_operation_contract';
@@ -36,6 +43,8 @@ export interface RegisterArsToolsOptions {
    * not enforced and the tool description and a stderr warning say so.
    */
   resolvers?: AdapterResolvers;
+  /** Receives one AuditEvent per tool call. Without it, ARS_AUDIT=stderr writes JSON lines to stderr; otherwise nothing is recorded. */
+  onAudit?: AuditSink;
 }
 
 function unenforcedGuardCount(opDef: Operation, resolvers: AdapterResolvers | undefined): number {
@@ -76,7 +85,7 @@ export function registerArsTools(
         executors[opDef.name],
         input,
         options.context ?? {},
-        { resolvers, server: server as unknown as ElicitationHost },
+        { resolvers, onAudit: options.onAudit, server: server as unknown as ElicitationHost },
       );
 
     // The SDK's `registerTool` infers the handler's arg type from `inputSchema` via

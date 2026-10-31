@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { OperationHandle, noopAdapter, createAdapter } from '@agent-ready/core';
 import type { Operation } from '@agent-ready/core';
 import { runOperation } from './pipeline.js';
+import type { AuditEvent } from './pipeline.js';
 
 const validatedOp = new OperationHandle(
   {
@@ -341,5 +342,116 @@ describe('runOperation - confirmation through elicitation', () => {
 
     expect((result.structuredContent as any).type).toBe('pending');
     expect(executor).not.toHaveBeenCalled();
+  });
+});
+
+describe('runOperation - audit', () => {
+  const auditedOp = new OperationHandle(
+    {
+      id: 'OP-A-01',
+      name: 'registrar_gasto_audit',
+      risk_level: 'confirmation',
+      input_schema: { valor: { type: 'decimal', required: true }, nota: { type: 'string', required: false } },
+      audit: { log: true, include_fields: ['valor'] },
+      state_guards: [
+        { description: 'g', query: 'SELECT 1', assert: { ok: true }, on_fail: { message: 'no' } },
+      ],
+    } satisfies Operation,
+    noopAdapter(),
+  );
+  const plainOp = new OperationHandle(
+    {
+      id: 'OP-A-02',
+      name: 'ler_audit',
+      risk_level: 'free',
+      input_schema: { x: { type: 'int', required: false } },
+    } satisfies Operation,
+    noopAdapter(),
+  );
+  const elicit = (answer: any) => ({
+    server: {
+      getClientCapabilities: () => ({ elicitation: {} }),
+      elicitInput: vi.fn().mockResolvedValue(answer),
+    },
+  });
+  const accept = { action: 'accept', content: { confirm: true } };
+
+  it('emits exactly one audit event per decision', async () => {
+    const run = async (op: OperationHandle, exec: any, input: any, opts: any = {}) => {
+      const events: AuditEvent[] = [];
+      await runOperation(op, exec, input, {}, { ...opts, onAudit: (e: AuditEvent) => events.push(e) });
+      return events;
+    };
+    const ok = vi.fn().mockResolvedValue({});
+    const table: Array<[string, AuditEvent[]]> = [
+      ['executed', await run(plainOp, ok, { x: 1 })],
+      ['validation_error', await run(auditedOp, ok, {})],
+      [
+        'blocked',
+        await run(auditedOp, ok, { valor: 1 }, { resolvers: { 'sql.query': () => ({ ok: false }) } }),
+      ],
+      ['pending', await run(auditedOp, ok, { valor: 1 })],
+      ['confirmed', await run(auditedOp, ok, { valor: 1 }, { server: elicit(accept) })],
+      ['declined', await run(auditedOp, ok, { valor: 1 }, { server: elicit({ action: "decline" }) })],
+      ['error', await run(plainOp, vi.fn().mockRejectedValue(new Error('x')), { x: 1 })],
+    ];
+
+    for (const [decision, events] of table) {
+      expect(events, decision).toHaveLength(1);
+      expect(events[0].decision).toBe(decision);
+      expect(typeof events[0].ts).toBe('string');
+      expect(events[0].duration_ms).toBeGreaterThanOrEqual(0);
+    }
+    expect(table[0][1][0]).toMatchObject({ operation: 'ler_audit', risk_level: 'free', input_keys: ['x'] });
+  });
+
+  it('audit_fields follow include_fields', async () => {
+    const events: AuditEvent[] = [];
+    const onAudit = (e: AuditEvent) => events.push(e);
+    await runOperation(auditedOp, vi.fn(), { valor: 9, nota: 'secret' }, {}, { onAudit });
+    await runOperation(plainOp, vi.fn().mockResolvedValue({}), { x: 1 }, {}, { onAudit });
+
+    expect(events[0].audit_fields).toEqual({ valor: 9 });
+    expect(events[0].input_keys).toEqual(['valor', 'nota']);
+    expect(events[1].audit_fields).toEqual({});
+  });
+
+  it('no audit sink writes nothing', async () => {
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const prev = process.env.ARS_AUDIT;
+    delete process.env.ARS_AUDIT;
+    try {
+      await runOperation(plainOp, vi.fn().mockResolvedValue({}), { x: 1 });
+      expect(write).not.toHaveBeenCalled();
+    } finally {
+      write.mockRestore();
+      if (prev !== undefined) process.env.ARS_AUDIT = prev;
+    }
+  });
+
+  it('ARS_AUDIT=stderr emits jsonl', async () => {
+    const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const prev = process.env.ARS_AUDIT;
+    process.env.ARS_AUDIT = 'stderr';
+    try {
+      await runOperation(plainOp, vi.fn().mockResolvedValue({}), { x: 1 });
+      expect(write).toHaveBeenCalledTimes(1);
+      const line = String(write.mock.calls[0][0]);
+      expect(line.endsWith('\n')).toBe(true);
+      expect(JSON.parse(line)).toMatchObject({ operation: 'ler_audit', decision: 'executed' });
+    } finally {
+      write.mockRestore();
+      if (prev === undefined) delete process.env.ARS_AUDIT;
+      else process.env.ARS_AUDIT = prev;
+    }
+  });
+
+  it('a throwing sink does not break the call', async () => {
+    const result = await runOperation(plainOp, vi.fn().mockResolvedValue({}), { x: 1 }, {}, {
+      onAudit: () => {
+        throw new Error('sink down');
+      },
+    });
+    expect(result.isError).toBe(false);
   });
 });

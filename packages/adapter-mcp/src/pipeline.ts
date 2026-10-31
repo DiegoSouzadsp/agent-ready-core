@@ -6,6 +6,33 @@ import type {
 } from '@agent-ready/core';
 import type { ExecutorFn, McpToolResult } from './types.js';
 
+export type AuditDecision =
+  | 'executed'
+  | 'validation_error'
+  | 'blocked'
+  | 'pending'
+  | 'confirmed'
+  | 'declined'
+  | 'error';
+
+/** One decision record per runOperation call. */
+export interface AuditEvent {
+  ts: string;
+  operation: string;
+  risk_level: string;
+  decision: AuditDecision;
+  duration_ms: number;
+  input_keys: string[];
+  audit_fields: Record<string, unknown>;
+}
+
+export type AuditSink = (event: AuditEvent) => void;
+
+/** Audit sink that writes each event as one JSON line on stderr. */
+export const stderrAuditSink: AuditSink = (event) => {
+  process.stderr.write(`${JSON.stringify(event)}\n`);
+};
+
 /** The part of McpServer that confirmation through elicitation needs. */
 export interface ElicitationHost {
   server?: {
@@ -20,6 +47,8 @@ export interface ElicitationHost {
 export interface RunOperationOptions {
   /** MCP server used to ask the human for confirmation through elicitation. */
   server?: ElicitationHost;
+  /** Receives one AuditEvent per call; without it, ARS_AUDIT=stderr selects stderrAuditSink, else nothing is written. */
+  onAudit?: AuditSink;
   /** Resolvers that evaluate state_guards; a guard whose predicate is absent here is not enforced. */
   resolvers?: AdapterResolvers;
 }
@@ -158,6 +187,12 @@ async function evaluateGuards(
   return null;
 }
 
+interface Outcome {
+  result: McpToolResult;
+  decision: AuditDecision;
+  input: Record<string, unknown>;
+}
+
 /**
  * invariant: the pipeline order is defaults → validate → foreign keys → state guards
  * → confirmation gate → executor → signpost, and the executor is never called when validation fails (field-level
@@ -175,45 +210,82 @@ export async function runOperation(
   context: Record<string, unknown> = {},
   options: RunOperationOptions = {},
 ): Promise<McpToolResult> {
-  const input = op.applyDefaults(rawInput, context);
-  const result = op.validate(input, context);
+  const started = Date.now();
+  const outcome = await decide(op, executor, rawInput, context, options);
+  emitAudit(op, rawInput, outcome, Date.now() - started, options.onAudit);
+  return outcome.result;
+}
 
-  if (!result.valid) {
-    return toMcpResult(op.signpost('validation_error', { errors: result.errors }), true);
+async function decide(
+  op: OperationHandle,
+  executor: ExecutorFn | undefined,
+  rawInput: Record<string, unknown>,
+  context: Record<string, unknown>,
+  options: RunOperationOptions,
+): Promise<Outcome> {
+  const input = op.applyDefaults(rawInput, context);
+  const outcome = (result: McpToolResult, decision: AuditDecision): Outcome => ({
+    result,
+    decision,
+    input,
+  });
+  const validation = op.validate(input, context);
+
+  if (!validation.valid) {
+    return outcome(
+      toMcpResult(op.signpost('validation_error', { errors: validation.errors }), true),
+      'validation_error',
+    );
   }
 
   const fkErrors = await op.validateForeignKeys(input);
   if (fkErrors.length > 0) {
-    return toMcpResult(op.signpost('validation_error', { errors: fkErrors }), true);
+    return outcome(
+      toMcpResult(op.signpost('validation_error', { errors: fkErrors }), true),
+      'validation_error',
+    );
   }
 
   const guard = await evaluateGuards(op, input, options.resolvers);
   if (guard && 'error' in guard) {
-    return errorResult(
-      `State guard for "${op.definition.name}" could not be evaluated: ${guard.error.message}`,
+    return outcome(
+      errorResult(
+        `State guard for "${op.definition.name}" could not be evaluated: ${guard.error.message}`,
+      ),
+      'error',
     );
   }
   if (guard) {
-    return toMcpResult(
-      op.signpost('blocked_transition', {
-        ...input,
-        reason: guard.blocked.on_fail.message,
-        what_to_do: guard.blocked.on_fail.suggest,
-      }),
-      false,
+    return outcome(
+      toMcpResult(
+        op.signpost('blocked_transition', {
+          ...input,
+          reason: guard.blocked.on_fail.message,
+          what_to_do: guard.blocked.on_fail.suggest,
+        }),
+        false,
+      ),
+      'blocked',
     );
   }
 
+  let confirmed = false;
   // invariant: confirmation is asked through MCP elicitation only when the client advertises it; otherwise the call returns pending.
-  if (result.needsHumanConfirmation) {
+  if (validation.needsHumanConfirmation) {
     const answer = await askHuman(op, input, options.server);
-    if (answer === 'unavailable') return toMcpResult(op.signpost('pending', input), false);
-    if (answer === 'declined') return declinedResult(op, input);
+    if (answer === 'unavailable') {
+      return outcome(toMcpResult(op.signpost('pending', input), false), 'pending');
+    }
+    if (answer === 'declined') return outcome(declinedResult(op, input), 'declined');
+    confirmed = true;
   }
 
   if (!executor) {
-    return errorResult(
-      `No executor configured for operation "${op.definition.name}". Wire one in the executors map passed to registerArsTools().`,
+    return outcome(
+      errorResult(
+        `No executor configured for operation "${op.definition.name}". Wire one in the executors map passed to registerArsTools().`,
+      ),
+      'error',
     );
   }
 
@@ -221,8 +293,41 @@ export async function runOperation(
   try {
     execResult = await executor(input);
   } catch (err) {
-    return errorResult(`Executor for "${op.definition.name}" failed: ${(err as Error).message}`);
+    return outcome(
+      errorResult(`Executor for "${op.definition.name}" failed: ${(err as Error).message}`),
+      'error',
+    );
   }
 
-  return successResult(applyResponseStrategy(op, op.signpost('success', execResult), execResult));
+  return outcome(
+    successResult(applyResponseStrategy(op, op.signpost('success', execResult), execResult)),
+    confirmed ? 'confirmed' : 'executed',
+  );
+}
+
+function emitAudit(
+  op: OperationHandle,
+  rawInput: Record<string, unknown>,
+  outcome: Outcome,
+  durationMs: number,
+  onAudit: AuditSink | undefined,
+): void {
+  const sink = onAudit ?? (process.env.ARS_AUDIT === 'stderr' ? stderrAuditSink : undefined);
+  if (!sink) return;
+
+  const audit = op.definition.audit;
+  const event: AuditEvent = {
+    ts: new Date().toISOString(),
+    operation: op.definition.name,
+    risk_level: op.definition.risk_level,
+    decision: outcome.decision,
+    duration_ms: durationMs,
+    input_keys: Object.keys(rawInput),
+    audit_fields: audit ? pick(outcome.input, audit.include_fields ?? []) : {},
+  };
+  try {
+    sink(event);
+  } catch {
+    // hazard: a failing audit sink must not turn an allowed call into an error.
+  }
 }
