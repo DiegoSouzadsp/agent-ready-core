@@ -90,7 +90,7 @@ Merge settings.snippet.json into .claude/settings.json (format: https://code.cla
 ```
 
 - `ars init [dir] [--force]` writes `<dir>/agent-ready.yml` with four operations (free, validated, contextual, confirmation) and English comments. It refuses to overwrite an existing file without `--force`.
-- `ars hooks export <schema> --target claude-code [--server <name>] [--out <dir>]` writes `ars-pretooluse.mjs` and `settings.snippet.json` (matcher `mcp__<name>__.*`). The hook answers `allow` for free, validated and contextual operations, `ask` for confirmation, and nothing for tools it does not know. `--server` defaults to `agent-ready`, `--out` to `.`.
+- `ars hooks export <schema> --target claude-code [--server <name>] [--out <dir>]` writes `ars-pretooluse.mjs` and `settings.snippet.json` (matcher `mcp__<name>__.*`). The hook answers `allow` for free, validated and contextual operations, `ask` for confirmation, and nothing for tools it does not know. `--server` defaults to `agent-ready`, `--out` to `.`. The hook widens autonomy according to `risk_level`: `allow` skips Claude Code's normal permission prompt, and only `confirmation` becomes `ask` (with the `message_template` rendered from the tool input).
 
 A runnable server with one operation per risk level is in [`examples/quickstart/`](examples/quickstart/).
 

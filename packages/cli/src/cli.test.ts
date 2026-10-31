@@ -169,9 +169,9 @@ describe('ars hooks export', () => {
     return { r, out };
   }
 
-  function runHook(script: string, toolName: string) {
+  function runHook(script: string, toolName: string, toolInput: Record<string, unknown> = {}) {
     const r = spawnSync('node', [script], {
-      input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: toolName, tool_input: {} }),
+      input: JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: toolName, tool_input: toolInput }),
       encoding: 'utf8',
     });
     return { status: r.status, stdout: r.stdout.trim() };
@@ -204,12 +204,28 @@ describe('ars hooks export', () => {
     }
   });
 
+  it('hook keeps unresolved placeholders and quotes the script path', () => {
+    const schemaDir = tmpDir();
+    spawnSync('node', [cliPath, 'init', schemaDir]);
+    const out = path.join(tmpDir(), 'with space');
+    const r = spawnSync('node', [
+      cliPath, 'hooks', 'export', path.join(schemaDir, 'agent-ready.yml'),
+      '--target', 'claude-code', '--server', 's', '--out', out,
+    ]);
+    expect(r.status).toBe(0);
+    const snippet = JSON.parse(fs.readFileSync(path.join(out, 'settings.snippet.json'), 'utf8'));
+    const cmd: string = snippet.hooks.PreToolUse[0].hooks[0].command;
+    expect(cmd).toMatch(/^node ".*with space.*ars-pretooluse\.mjs"$/);
+    const res = runHook(path.join(out, 'ars-pretooluse.mjs'), 'mcp__s__delete_ticket');
+    expect(JSON.parse(res.stdout).hookSpecificOutput.permissionDecisionReason).toContain('{{ticket_id}}');
+  });
+
   it('hook output matches documented claude code format fixture', () => {
     expect(fixture.source_url).toMatch(/^https:\/\//);
     const { out } = exportHook();
     const script = path.join(out, 'ars-pretooluse.mjs');
     expect(JSON.parse(runHook(script, 'mcp__s__list_tickets').stdout)).toEqual(fixture.allow_output);
-    expect(JSON.parse(runHook(script, fixture.input_example.tool_name).stdout)).toEqual(fixture.ask_output);
+    expect(JSON.parse(runHook(script, fixture.input_example.tool_name, fixture.input_example.tool_input).stdout)).toEqual(fixture.ask_output);
     const snippet = JSON.parse(fs.readFileSync(path.join(out, 'settings.snippet.json'), 'utf8'));
     snippet.hooks.PreToolUse[0].hooks[0].command = snippet.hooks.PreToolUse[0].hooks[0].command
       .replace(out.split(path.sep).join('/'), '<OUT>');

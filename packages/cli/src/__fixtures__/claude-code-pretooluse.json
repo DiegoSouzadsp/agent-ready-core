@@ -11,7 +11,7 @@
       "PreToolUse": [
         {
           "matcher": "mcp__s__.*",
-          "hooks": [{ "type": "command", "command": "node <OUT>/ars-pretooluse.mjs" }]
+          "hooks": [{ "type": "command", "command": "node \"<OUT>/ars-pretooluse.mjs\"" }]
         }
       ]
     }
@@ -23,7 +23,7 @@
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",
       "permissionDecision": "ask",
-      "permissionDecisionReason": "This will permanently delete ticket {{ticket_id}}. A human must approve before it runs."
+      "permissionDecisionReason": "This will permanently delete ticket 1. A human must approve before it runs."
     }
   }
 }
