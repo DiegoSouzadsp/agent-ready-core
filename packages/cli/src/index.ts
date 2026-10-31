@@ -5,6 +5,7 @@ import pc from 'picocolors';
 import { AgentReady } from '@agent-ready/core';
 import fs from 'node:fs';
 import path from 'node:path';
+import { INIT_TEMPLATE } from './init-template.js';
 
 const program = new Command();
 
@@ -195,6 +196,34 @@ program
       }
       console.log('');
       
+    } catch (err: any) {
+      console.error(pc.red(`\n❌ Error: ${err.message}`));
+      process.exit(1);
+    }
+  });
+
+program
+  .command('init')
+  .description('Create a starter agent-ready.yml with one operation per risk level')
+  .argument('[dir]', 'target directory', '.')
+  .option('--force', 'overwrite an existing agent-ready.yml')
+  .action((dir: string, opts: { force?: boolean }) => {
+    try {
+      const target = path.resolve(process.cwd(), dir, 'agent-ready.yml');
+      if (fs.existsSync(target) && !opts.force) {
+        console.error(pc.red(`\n❌ ${target} already exists. Use --force to overwrite.`));
+        process.exit(1);
+      }
+      try {
+        AgentReady.fromYAML(INIT_TEMPLATE);
+      } catch (err: any) {
+        console.error(pc.red(`\n❌ Generated template is invalid: ${err.message}`));
+        process.exit(1);
+      }
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, INIT_TEMPLATE, 'utf8');
+      console.log(pc.green(`\n✅ Created ${target}`));
+      console.log(`Next: ars validate ${target}`);
     } catch (err: any) {
       console.error(pc.red(`\n❌ Error: ${err.message}`));
       process.exit(1);

@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { exec } from 'node:child_process';
+import { exec, spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
@@ -102,5 +104,51 @@ describe('CLI Commands', () => {
       expect(code).toBe(1);
       expect(stderr).toContain('Operation \'fake_op\' not found');
     });
+  });
+});
+
+function tmpDir(): string {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'ars-cli-'));
+}
+
+describe('ars init', () => {
+  it('init creates a valid agent-ready.yml', async () => {
+    const dir = tmpDir();
+    const { code } = await runCli(`init "${dir}"`);
+    expect(code).toBe(0);
+    const file = path.join(dir, 'agent-ready.yml');
+    expect(fs.existsSync(file)).toBe(true);
+    const validated = await runCli(`validate "${file}"`);
+    expect(validated.code).toBe(0);
+    expect(validated.stdout).toContain('Operations');
+  });
+
+  it('init template has one operation per risk level', () => {
+    const dir = tmpDir();
+    const r = spawnSync('node', [cliPath, 'init', dir]);
+    expect(r.status).toBe(0);
+    const text = fs.readFileSync(path.join(dir, 'agent-ready.yml'), 'utf8');
+    const levels = [...text.matchAll(/^\s+risk_level: (\w+)$/gm)].map((m) => m[1]);
+    expect(levels.sort()).toEqual(['confirmation', 'contextual', 'free', 'validated']);
+    expect(text).toContain('# Level 1 (free)');
+    expect(text).toContain('predicate: sql.query');
+    expect(text).toContain('query: "SELECT status');
+    expect(text).toContain('mode: summary');
+    expect(text).toContain('message_template');
+    expect(text).toContain('include_fields');
+    expect(text).toContain('foreign_key');
+    expect(text).toContain('validation_rules');
+  });
+
+  it('init refuses to overwrite without force', async () => {
+    const dir = tmpDir();
+    const file = path.join(dir, 'agent-ready.yml');
+    fs.writeFileSync(file, 'custom: true\n');
+    const refused = await runCli(`init "${dir}"`);
+    expect(refused.code).toBe(1);
+    expect(fs.readFileSync(file, 'utf8')).toBe('custom: true\n');
+    const forced = await runCli(`init "${dir}" --force`);
+    expect(forced.code).toBe(0);
+    expect(fs.readFileSync(file, 'utf8')).toContain('module: tickets');
   });
 });
