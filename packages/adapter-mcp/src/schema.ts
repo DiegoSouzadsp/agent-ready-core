@@ -106,6 +106,11 @@ export function inputFieldsToZodShape(fields: InputField[]): Record<string, z.Zo
   for (const field of fields) {
     let zodType = fieldTypeToZod(field);
 
+    // why: the SDK validates inputSchema before the handler runs, so a required field or a wrong
+    // type becomes a raw -32602; the union with unknown keeps the intended type in the JSON Schema
+    // (anyOf) while ARS validation returns the signpost.
+    zodType = z.union([zodType, z.unknown()]).optional();
+
     const summary = fieldConstraintSummary(field);
     const description = [field.description, summary ? `[rules: ${summary}]` : '']
       .filter(Boolean)
@@ -113,9 +118,6 @@ export function inputFieldsToZodShape(fields: InputField[]): Record<string, z.Zo
     if (description) {
       zodType = zodType.describe(description);
     }
-    // why: the SDK validates inputSchema before the handler runs, so a required Zod field turns
-    // a missing value into a raw -32602; every field stays optional and ARS validates instead.
-    zodType = zodType.optional();
 
     shape[field.name!] = zodType;
   }

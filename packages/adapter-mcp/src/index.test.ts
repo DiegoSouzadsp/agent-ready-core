@@ -344,3 +344,20 @@ operations:
     }
   });
 });
+
+describe('registerArsTools - wrong type is never a protocol error', () => {
+  it('every field schema accepts a wrong-typed value so ARS can answer with a signpost', async () => {
+    const agent = AgentReady.fromYAML(TWO_OP_SCHEMA);
+    const server = mockServer();
+    registerArsTools(server as any, agent, { registrar_gasto: vi.fn() });
+
+    const [, config, handler] = server.registerTool.mock.calls.find((c) => c[0] === 'registrar_gasto')!;
+    expect(config.inputSchema.valor.safeParse('abc').success).toBe(true);
+    expect(config.inputSchema.valor.safeParse(5).success).toBe(true);
+
+    const result = await handler({ valor: 'abc' });
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent.type).toBe('validation_error');
+    expect(result.content[0].text).toContain('[valor]');
+  });
+});

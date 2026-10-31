@@ -12,69 +12,71 @@ function field(overrides: Partial<InputField>): InputField {
   return { name: 'f', type: 'string', ...overrides };
 }
 
+const intended = (schema: unknown) => (schema as any).unwrap().options[0];
+
 describe('inputFieldsToZodShape', () => {
   it('maps string fields to z.string()', () => {
     const shape = inputFieldsToZodShape([field({ name: 'descricao', type: 'string', required: true })]);
-    expect(shape.descricao.safeParse('mercado').success).toBe(true);
-    expect(shape.descricao.safeParse(123).success).toBe(false);
+    expect(intended(shape.descricao).safeParse('mercado').success).toBe(true);
+    expect(intended(shape.descricao).safeParse(123).success).toBe(false);
   });
 
   it('maps int fields to z.number().int()', () => {
     const shape = inputFieldsToZodShape([field({ name: 'categoria_id', type: 'int', required: true })]);
-    expect(shape.categoria_id.safeParse(5).success).toBe(true);
-    expect(shape.categoria_id.safeParse(5.5).success).toBe(false);
-    expect(shape.categoria_id.safeParse('5').success).toBe(false);
+    expect(intended(shape.categoria_id).safeParse(5).success).toBe(true);
+    expect(intended(shape.categoria_id).safeParse(5.5).success).toBe(false);
+    expect(intended(shape.categoria_id).safeParse('5').success).toBe(false);
   });
 
   it('maps decimal fields to z.number()', () => {
     const shape = inputFieldsToZodShape([field({ name: 'valor', type: 'decimal', required: true })]);
-    expect(shape.valor.safeParse(50.5).success).toBe(true);
-    expect(shape.valor.safeParse('50.5').success).toBe(false);
+    expect(intended(shape.valor).safeParse(50.5).success).toBe(true);
+    expect(intended(shape.valor).safeParse('50.5').success).toBe(false);
   });
 
   it('maps bool fields to z.boolean()', () => {
     const shape = inputFieldsToZodShape([field({ name: 'reembolso', type: 'bool', required: true })]);
-    expect(shape.reembolso.safeParse(true).success).toBe(true);
-    expect(shape.reembolso.safeParse('true').success).toBe(false);
+    expect(intended(shape.reembolso).safeParse(true).success).toBe(true);
+    expect(intended(shape.reembolso).safeParse('true').success).toBe(false);
   });
 
   it('maps date fields to z.string()', () => {
     const shape = inputFieldsToZodShape([field({ name: 'data', type: 'date', required: true })]);
-    expect(shape.data.safeParse('2026-07-03').success).toBe(true);
+    expect(intended(shape.data).safeParse('2026-07-03').success).toBe(true);
   });
 
   it('maps datetime fields to z.string()', () => {
     const shape = inputFieldsToZodShape([field({ name: 'ts', type: 'datetime', required: true })]);
-    expect(shape.ts.safeParse('2026-07-03T10:00:00Z').success).toBe(true);
+    expect(intended(shape.ts).safeParse('2026-07-03T10:00:00Z').success).toBe(true);
   });
 
   it('maps enum fields with values to z.enum()', () => {
     const shape = inputFieldsToZodShape([
       field({ name: 'conta', type: 'enum', values: ['inter', 'c6', 'santander'], required: true }),
     ]);
-    expect(shape.conta.safeParse('inter').success).toBe(true);
-    expect(shape.conta.safeParse('nubank').success).toBe(false);
+    expect(intended(shape.conta).safeParse('inter').success).toBe(true);
+    expect(intended(shape.conta).safeParse('nubank').success).toBe(false);
   });
 
   it('falls back to z.string() when enum has no values', () => {
     const shape = inputFieldsToZodShape([field({ name: 'conta', type: 'enum', required: true })]);
-    expect(shape.conta.safeParse('anything').success).toBe(true);
+    expect(intended(shape.conta).safeParse('anything').success).toBe(true);
   });
 
   it('falls back to z.string() when enum values is an empty array', () => {
     const shape = inputFieldsToZodShape([field({ name: 'conta', type: 'enum', values: [], required: true })]);
-    expect(shape.conta.safeParse('anything').success).toBe(true);
+    expect(intended(shape.conta).safeParse('anything').success).toBe(true);
   });
 
   it('maps base64 fields to z.string()', () => {
     const shape = inputFieldsToZodShape([field({ name: 'foto', type: 'base64', required: true })]);
-    expect(shape.foto.safeParse('aGVsbG8=').success).toBe(true);
+    expect(intended(shape.foto).safeParse('aGVsbG8=').success).toBe(true);
   });
 
   it('maps any fields to z.any()', () => {
     const shape = inputFieldsToZodShape([field({ name: 'payload', type: 'any', required: true })]);
-    expect(shape.payload.safeParse({ x: 1 }).success).toBe(true);
-    expect(shape.payload.safeParse('x').success).toBe(true);
+    expect(intended(shape.payload).safeParse({ x: 1 }).success).toBe(true);
+    expect(intended(shape.payload).safeParse('x').success).toBe(true);
   });
 
   it('wraps required:true fields in .optional() so ARS, not the SDK, reports the missing field', () => {

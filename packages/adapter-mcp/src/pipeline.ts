@@ -56,9 +56,21 @@ export interface RunOperationOptions {
 /** Default guard predicate when a StateGuard names none. */
 export const DEFAULT_GUARD_PREDICATE = 'sql.query';
 
+function signpostText(signpost: SignpostResult): string {
+  const lines = [signpost.guidance];
+  if (signpost.reason) lines.push(`Reason: ${signpost.reason}`);
+  if (signpost.what_to_do) lines.push(`What to do: ${signpost.what_to_do}`);
+  for (const e of signpost.errors ?? []) lines.push(`[${e.field}] (${e.code}) ${e.message}`);
+  const next = [...(signpost.next ?? []), ...(signpost.suggestions ?? [])];
+  if (next.length > 0) {
+    lines.push(`Next: ${next.map((n) => `${n.operation} (${n.reason})`).join('; ')}`);
+  }
+  return lines.join(String.fromCharCode(10));
+}
+
 function toMcpResult(signpost: SignpostResult, isError: boolean): McpToolResult {
   return {
-    content: [{ type: 'text', text: signpost.guidance }],
+    content: [{ type: 'text', text: signpostText(signpost) }],
     structuredContent: signpost as unknown as Record<string, unknown>,
     isError,
   };

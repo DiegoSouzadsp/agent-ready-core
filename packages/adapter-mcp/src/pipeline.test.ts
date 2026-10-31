@@ -39,7 +39,7 @@ describe('runOperation', () => {
     expect(result.isError).toBe(true);
     expect((result.structuredContent as any).type).toBe('validation_error');
     expect((result.structuredContent as any).errors[0].field).toBe('valor');
-    expect(result.content[0].text).toBe((result.structuredContent as any).guidance);
+    expect(result.content[0].text).toContain((result.structuredContent as any).guidance);
     expect(result.content[0].text.length).toBeGreaterThan(0);
     expect(executor).not.toHaveBeenCalled();
   });
@@ -329,7 +329,7 @@ describe('runOperation - confirmation through elicitation', () => {
     for (const server of [fakeServer(undefined, elicitInput), {}, undefined]) {
       const result = await runOperation(confirmOp, executor, { chamado_id: 5 }, {}, { server });
       expect((result.structuredContent as any).type).toBe('pending');
-      expect(result.content[0].text).toBe('Delete ticket 5?');
+      expect(result.content[0].text).toContain('Delete ticket 5?');
     }
     expect(elicitInput).not.toHaveBeenCalled();
     expect(executor).not.toHaveBeenCalled();
@@ -453,5 +453,27 @@ describe('runOperation - audit', () => {
       },
     });
     expect(result.isError).toBe(false);
+  });
+});
+
+describe('runOperation - text carries the whole signpost', () => {
+  const typedOp = new OperationHandle(
+    {
+      id: 'OP-X-01',
+      name: 'registrar_x',
+      risk_level: 'validated',
+      input_schema: { valor: { type: 'decimal', required: true } },
+    } satisfies Operation,
+    noopAdapter(),
+  );
+
+  it('validation_error text has reason, what_to_do and one line per field error', async () => {
+    const result = await runOperation(typedOp, vi.fn(), { valor: 'abc' });
+    const text = result.content[0].text;
+
+    expect(result.isError).toBe(true);
+    expect(text).toContain('Reason:');
+    expect(text).toContain('What to do:');
+    expect(text).toMatch(/\[valor\] \(INVALID_TYPE\) /);
   });
 });
