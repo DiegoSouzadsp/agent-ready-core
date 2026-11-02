@@ -49,7 +49,7 @@ describe('runOperation', () => {
     const result = await runOperation(validatedOp, executor, { valor: 50 });
 
     expect(executor).toHaveBeenCalledTimes(1);
-    expect(executor).toHaveBeenCalledWith({ valor: 50, origem: 'mcp' }, expect.anything());
+    expect(executor).toHaveBeenCalledWith({ valor: 50, origem: 'mcp' }, { decision: 'executed', risk_level: 'validated' });
     expect(result.isError).toBe(false);
     expect((result.structuredContent as any).type).toBe('success');
     expect((result.structuredContent as any).data).toEqual({ gasto_id: 42 });
@@ -135,7 +135,7 @@ describe('runOperation - signposts that teach', () => {
     const result = await runOperation(inferOp, executor, { titulo: 'x' }, { membro_id: 7 });
 
     expect(result.isError).toBe(false);
-    expect(executor).toHaveBeenCalledWith({ titulo: 'x', membro_id: 7 }, expect.anything());
+    expect(executor).toHaveBeenCalledWith({ titulo: 'x', membro_id: 7 }, { decision: 'executed', risk_level: 'validated' });
   });
 
   it('success text carries result json and next', async () => {

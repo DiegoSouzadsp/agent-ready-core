@@ -15,7 +15,15 @@ function argValue(flag: string): string | undefined {
 
 const pluginDir = argValue('--plugin');
 if (!pluginDir) {
-  console.error('Usage: ars-gateway --plugin <dir> [--port 8808] [--host 0.0.0.0] [--token <t>]...');
+  console.error('Usage: ars-gateway --plugin <dir> [--port 8808] [--host 0.0.0.0] [--token <t>]... [--insecure-no-auth]');
+  process.exit(1);
+}
+
+let inboundTokens: string[];
+try {
+  inboundTokens = resolveInboundTokens(process.argv, process.env);
+} catch (err) {
+  console.error(`[ars-gateway] ${(err as Error).message}`);
   process.exit(1);
 }
 
@@ -23,7 +31,8 @@ startGatewayHttp({
   pluginDir,
   port: Number(argValue('--port') ?? 8808),
   host: argValue('--host'),
-  inboundTokens: resolveInboundTokens(process.argv, process.env),
+  inboundTokens,
+  allowInsecureNoAuth: process.argv.includes('--insecure-no-auth'),
 })
   .then(({ plugin, port }) => {
     console.log(

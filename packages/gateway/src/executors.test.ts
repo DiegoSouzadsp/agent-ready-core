@@ -222,16 +222,19 @@ describe('buildExecutor — X-ARS signing', () => {
   const ctx = { decision: 'executed', risk_level: 'free' } as const;
   const sent = (fetchImpl: ReturnType<typeof vi.fn>) =>
     fetchImpl.mock.calls[0] as [string, { method: string; headers: Record<string, string>; body?: string }];
-  const expected = (url: string, init: { method: string; headers: Record<string, string>; body?: string }, op: string, decision: string) => {
+  const expected = (url: string, init: { method: string; headers: Record<string, string>; body?: string }, op: string, risk: string, decision: string) => {
     const u = new URL(url);
     return signArsRequest({
       secret: 'sig-secret',
       timestamp: Number(init.headers['X-ARS-Timestamp']),
+      nonce: init.headers['X-ARS-Nonce'],
       method: init.method,
       pathAndQuery: u.pathname + u.search,
       body: init.body ?? '',
       operation: op,
+      risk,
       decision,
+      actingUser: init.headers['X-Acting-User'] ?? '',
     });
   };
 
@@ -247,9 +250,10 @@ describe('buildExecutor — X-ARS signing', () => {
       const [url, init] = sent(fetchImpl);
       expect(Math.abs(Date.now() - Number(init.headers['X-ARS-Timestamp']))).toBeLessThan(5000);
       expect(init.headers['X-ARS-Operation']).toBe(op);
+      expect(init.headers['X-ARS-Nonce']).toMatch(/^[0-9a-f]{32}$/);
       expect(init.headers['X-ARS-Risk']).toBe('free');
       expect(init.headers['X-ARS-Decision']).toBe('executed');
-      expect(init.headers['X-ARS-Signature']).toBe(expected(url, init, op, 'executed'));
+      expect(init.headers['X-ARS-Signature']).toBe(expected(url, init, op, 'free', 'executed'));
       expect(init.headers['X-ARS-Signature']).toMatch(/^v1=[0-9a-f]{64}$/);
       expect(verifyArsSignature({ method: init.method, url, body: init.body, headers: init.headers }, 'sig-secret')).toMatchObject({ ok: true, operation: op, decision: 'executed' });
     }
@@ -260,7 +264,7 @@ describe('buildExecutor — X-ARS signing', () => {
     await buildExecutor('get_item', { path: '/api/items/{{id}}' }, SIGNED, { fetchImpl })({ id: 'a b/c' }, ctx);
     const [url, init] = sent(fetchImpl);
     expect(url).toContain('a%20b%2Fc');
-    expect(init.headers['X-ARS-Signature']).toBe(expected(url, init, 'get_item', 'executed'));
+    expect(init.headers['X-ARS-Signature']).toBe(expected(url, init, 'get_item', 'free', 'executed'));
     expect(verifyArsSignature({ method: 'GET', url, headers: init.headers }, 'sig-secret').ok).toBe(true);
     expect(verifyArsSignature({ method: 'GET', url: url.replace('a%20b%2Fc', 'a b/c'), headers: init.headers }, 'sig-secret').ok).toBe(false);
   });
@@ -285,8 +289,38 @@ describe('buildExecutor — X-ARS signing', () => {
     const [url, init] = sent(fetchImpl);
     expect(init.headers['X-ARS-Decision']).toBe('confirmed');
     expect(init.headers['X-ARS-Risk']).toBe('confirmation');
-    expect(init.headers['X-ARS-Signature']).toBe(expected(url, init, 'del', 'confirmed'));
+    expect(init.headers['X-ARS-Signature']).toBe(expected(url, init, 'del', 'confirmation', 'confirmed'));
     const swapped = { ...init.headers, 'X-ARS-Decision': 'executed' };
     expect(verifyArsSignature({ method: 'DELETE', url, headers: swapped }, 'sig-secret')).toEqual({ ok: false, reason: 'bad_signature' });
+  });
+
+  it('forged X-ARS headers from spec.headers are replaced by the signed ones', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({}));
+    const spec: ExecutorSpec = {
+      method: 'DELETE',
+      path: '/x',
+      headers: { 'X-ARS-Decision': 'executed', 'x-ars-operation': 'forged', 'X-ARS-Risk': 'free' },
+    };
+    await buildExecutor('del', spec, SIGNED, { fetchImpl })({}, { decision: 'confirmed', risk_level: 'confirmation' });
+    const [url, init] = sent(fetchImpl);
+    const names = Object.keys(init.headers).map((h) => h.toLowerCase());
+    expect(names.filter((h) => h === 'x-ars-decision')).toHaveLength(1);
+    expect(names.filter((h) => h === 'x-ars-operation')).toHaveLength(1);
+    expect(init.headers['X-ARS-Decision']).toBe('confirmed');
+    expect(init.headers['X-ARS-Operation']).toBe('del');
+    expect(init.headers['X-ARS-Risk']).toBe('confirmation');
+    expect(verifyArsSignature({ method: 'DELETE', url, headers: init.headers }, 'sig-secret')).toMatchObject({ ok: true, decision: 'confirmed', operation: 'del' });
+  });
+
+  it('signs the acting user that was sent and uses a fresh nonce per call', async () => {
+    const fetchImpl = vi.fn().mockImplementation(async () => jsonResponse({}));
+    const run = buildExecutor('op', { path: '/x' }, SIGNED, { fetchImpl, getActingUser: () => 'alice' });
+    await run({}, ctx);
+    await run({}, ctx);
+    const [url, init] = sent(fetchImpl);
+    expect(verifyArsSignature({ method: 'GET', url, headers: init.headers }, 'sig-secret')).toMatchObject({ ok: true, actingUser: 'alice' });
+    expect(verifyArsSignature({ method: 'GET', url, headers: { ...init.headers, 'X-Acting-User': 'mallory' } }, 'sig-secret')).toEqual({ ok: false, reason: 'bad_signature' });
+    const nonces = fetchImpl.mock.calls.map((c) => (c[1] as { headers: Record<string, string> }).headers['X-ARS-Nonce']);
+    expect(new Set(nonces).size).toBe(2);
   });
 });

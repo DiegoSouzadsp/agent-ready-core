@@ -131,6 +131,15 @@ export async function loadPlugin(dir: string, env: NodeJS.ProcessEnv = process.e
   if (!manifest.system_base_url) {
     throw new Error(`[gateway] plugin.yml in "${dir}" is missing required field "system_base_url"`);
   }
+  // hazard: an unset ${VAR} resolves to '' and would silently turn signing off while the owner believes it is on.
+  const rawAuth = (rawManifest as { auth?: { signing_secret?: unknown } } | null)?.auth;
+  if (rawAuth && 'signing_secret' in rawAuth && !manifest.auth?.signing_secret) {
+    const variables = [...String(rawAuth.signing_secret ?? '').matchAll(/\$\{(\w+)\}/g)].map((m) => m[1]);
+    throw new Error(
+      `[gateway] plugin.yml in "${dir}" declares auth.signing_secret but it resolved to an empty value` +
+        (variables.length ? ` — set the environment variable ${variables.join(', ')}` : ' — give it a non-empty value or remove the key'),
+    );
+  }
 
   const schemasDir = join(dir, 'schemas');
   let schemaFiles: string[];

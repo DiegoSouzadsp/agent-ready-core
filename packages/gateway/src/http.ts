@@ -29,6 +29,12 @@ export interface StartGatewayHttpOptions {
    * inbound auth and X-Acting-User is trusted as sent. Distinct from the plugin's service_token (gateway → system).
    */
   inboundTokens?: string[];
+  /** Permit listening beyond loopback with inbound auth off. Default false: the start fails instead. */
+  allowInsecureNoAuth?: boolean;
+}
+
+function isLoopbackHost(host: string): boolean {
+  return host === 'localhost' || host === '::1' || host === '[::1]' || /^127\./.test(host);
 }
 
 export interface RunningGateway {
@@ -46,6 +52,13 @@ export interface RunningGateway {
  */
 export async function startGatewayHttp(options: StartGatewayHttpOptions): Promise<RunningGateway> {
   const plugin = await loadPlugin(options.pluginDir, options.env ?? process.env);
+  const host = options.host ?? '127.0.0.1';
+  const hasTokens = (options.inboundTokens ?? []).some((token) => token !== '');
+  if (!hasTokens && !options.allowInsecureNoAuth && !isLoopbackHost(host)) {
+    throw new Error(
+      `Refusing to listen on "${host}" with inbound auth off: pass inboundTokens (--token / ARS_GATEWAY_TOKENS), bind to 127.0.0.1, or opt in with allowInsecureNoAuth (--insecure-no-auth).`,
+    );
+  }
   const inboundHeader = (options.actingUserHeader ?? 'x-acting-user').toLowerCase();
 
   const tokenDigests = (options.inboundTokens ?? [])
@@ -95,7 +108,7 @@ export async function startGatewayHttp(options: StartGatewayHttpOptions): Promis
 
     if (req.method === 'GET' && url === '/healthz') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'ok', plugin: plugin.name, operations: plugin.agent.operations }));
+      res.end(JSON.stringify({ status: 'ok' }));
       return;
     }
 
@@ -141,7 +154,7 @@ export async function startGatewayHttp(options: StartGatewayHttpOptions): Promis
 
   const requestedPort = options.port ?? 8808;
   await new Promise<void>((resolve) =>
-    httpServer.listen(requestedPort, options.host ?? '0.0.0.0', resolve),
+    httpServer.listen(requestedPort, host, resolve),
   );
   const address = httpServer.address();
   const port = typeof address === 'object' && address ? address.port : requestedPort;

@@ -1,4 +1,5 @@
-import type { ExecutorFn, ExecutorMap } from '@agent-ready/adapter-mcp';
+import { randomBytes } from 'node:crypto';
+import type { ExecutorContext, ExecutorFn, ExecutorMap } from '@agent-ready/adapter-mcp';
 import type { ExecutorMethod, ExecutorSpec, LoadedPlugin, PluginManifest } from './plugin.js';
 import { signArsRequest } from './signature.js';
 
@@ -87,7 +88,7 @@ export function buildExecutor(
 
   const signingSecret = manifest.auth?.signing_secret;
 
-  return async (input: Record<string, unknown>, ctx?: Parameters<ExecutorFn>[1]): Promise<Record<string, unknown>> => {
+  return async (input: Record<string, unknown>, ctx?: ExecutorContext): Promise<Record<string, unknown>> => {
     const path = renderPath(spec.path, input);
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     const url = `${baseUrl}${normalizedPath}${buildQueryString(spec.query, input)}`;
@@ -119,20 +120,31 @@ export function buildExecutor(
 
     // hazard: without ctx the decision would be invented, so an uncontextualized call is left unsigned.
     if (signingSecret && ctx) {
+      // invariant: governance headers are owned by the signer; a forged one from spec.headers must not survive.
+      for (const key of Object.keys(headers)) {
+        if (key.toLowerCase().startsWith('x-ars-')) delete headers[key];
+      }
       const parsed = new URL(url);
       const timestamp = Date.now();
+      const nonce = randomBytes(16).toString('hex');
+      const sentActingUser =
+        Object.entries(headers).find(([key]) => key.toLowerCase() === actingUserHeader.toLowerCase())?.[1] ?? '';
       headers['X-ARS-Timestamp'] = String(timestamp);
+      headers['X-ARS-Nonce'] = nonce;
       headers['X-ARS-Operation'] = operationName;
       headers['X-ARS-Risk'] = ctx.risk_level;
       headers['X-ARS-Decision'] = ctx.decision;
       headers['X-ARS-Signature'] = signArsRequest({
         secret: signingSecret,
         timestamp,
+        nonce,
         method,
         pathAndQuery: parsed.pathname + parsed.search,
         body: body ?? '',
         operation: operationName,
+        risk: ctx.risk_level,
         decision: ctx.decision,
+        actingUser: sentActingUser,
       });
     }
 

@@ -45,12 +45,10 @@ describe('startGatewayHttp — end-to-end over Streamable HTTP', () => {
     return client;
   }
 
-  it('GET /healthz reports plugin name and operations', async () => {
+  it('GET /healthz reports only status', async () => {
     const res = await fetch(`http://127.0.0.1:${gateway.port}/healthz`);
-    const body = (await res.json()) as { plugin: string; operations: string[] };
     expect(res.status).toBe(200);
-    expect(body.plugin).toBe('reference');
-    expect(body.operations).toContain('listar_itens');
+    expect(await res.json()).toEqual({ status: 'ok' });
   });
 
   it('lists the plugin operations plus get_operation_contract as MCP tools', async () => {
@@ -395,5 +393,28 @@ describe('startGatewayHttp — signed outbound requests', () => {
       await new Promise<void>((r) => gateway.httpServer.close(() => r()));
       await rm(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('startGatewayHttp — exposure without inbound auth', () => {
+  const ENV = { REFERENCE_API_URL: 'http://fake-system.local', REFERENCE_TOKEN: 'svc-secret' };
+  const close = (g: RunningGateway) => new Promise<void>((r) => g.httpServer.close(() => r()));
+
+  it('listens on loopback by default', async () => {
+    const g = await startGatewayHttp({ pluginDir: REFERENCE_DIR, port: 0, env: ENV });
+    try {
+      const address = g.httpServer.address();
+      expect(typeof address === 'object' && address?.address).toBe('127.0.0.1');
+    } finally {
+      await close(g);
+    }
+  });
+
+  it('refuses a non-loopback host without tokens unless explicitly allowed', async () => {
+    await expect(startGatewayHttp({ pluginDir: REFERENCE_DIR, port: 0, host: '0.0.0.0', env: ENV })).rejects.toThrow(/inbound auth off/);
+    const open = await startGatewayHttp({ pluginDir: REFERENCE_DIR, port: 0, host: '0.0.0.0', env: ENV, allowInsecureNoAuth: true });
+    await close(open);
+    const guarded = await startGatewayHttp({ pluginDir: REFERENCE_DIR, port: 0, host: '0.0.0.0', env: ENV, inboundTokens: ['t'] });
+    await close(guarded);
   });
 });

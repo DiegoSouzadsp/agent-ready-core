@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mkdtemp, cp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, cp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -81,6 +81,57 @@ describe('loadPlugin — signing_secret', () => {
       expect(plugin.manifest.auth?.signing_secret).toBe('from-env');
       const reference = await loadPlugin(REFERENCE_DIR, FAKE_ENV);
       expect(reference.manifest.auth?.signing_secret).toBeUndefined();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('loadPlugin — invalid manifests', () => {
+  async function fixture(files: Record<string, string>) {
+    const dir = await mkdtemp(join(tmpdir(), 'ars-bad-'));
+    await cp(REFERENCE_DIR, dir, { recursive: true });
+    for (const [name, content] of Object.entries(files)) await writeFile(join(dir, name), content);
+    return dir;
+  }
+  const BASE = 'plugin: reference\nsystem_base_url: https://api.example.com\n';
+
+  it('names the missing plugin field', async () => {
+    const dir = await fixture({ 'plugin.yml': 'system_base_url: https://api.example.com\n' });
+    try {
+      await expect(loadPlugin(dir, {})).rejects.toThrow(/missing required field "plugin"/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('names the missing system_base_url field', async () => {
+    const dir = await fixture({ 'plugin.yml': 'plugin: reference\n' });
+    try {
+      await expect(loadPlugin(dir, {})).rejects.toThrow(/missing required field "system_base_url"/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('reports an empty schemas directory', async () => {
+    const dir = await fixture({ 'plugin.yml': BASE });
+    try {
+      await rm(join(dir, 'schemas'), { recursive: true });
+      await mkdir(join(dir, 'schemas'));
+      await expect(loadPlugin(dir, {})).rejects.toThrow(/No schema files found/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('fails when signing_secret is declared but its variable resolves to empty', async () => {
+    const dir = await fixture({ 'plugin.yml': BASE + 'auth:\n  signing_secret: ${ARS_SIGNING_SECRET}\n' });
+    try {
+      await expect(loadPlugin(dir, {})).rejects.toThrow(/ARS_SIGNING_SECRET/);
+      await expect(loadPlugin(dir, { ARS_SIGNING_SECRET: '' })).rejects.toThrow(/signing_secret/);
+      const ok = await loadPlugin(dir, { ARS_SIGNING_SECRET: 'x' });
+      expect(ok.manifest.auth?.signing_secret).toBe('x');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
