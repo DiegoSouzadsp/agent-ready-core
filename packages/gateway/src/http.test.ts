@@ -418,3 +418,34 @@ describe('startGatewayHttp — exposure without inbound auth', () => {
     await close(guarded);
   });
 });
+
+describe('startGatewayHttp - agent profile configuration', () => {
+  const ENV = { REFERENCE_API_URL: 'http://fake-system.local', REFERENCE_TOKEN: 'svc-secret' };
+  const policy = (name: string) => ({
+    agent_policy: '1.0' as const,
+    name,
+    autonomy: { execute_up_to: 'validated' as const, ask_up_to: 'contextual' as const },
+  });
+
+  it('unknown or duplicate profile fails before listening', async () => {
+    await expect(
+      startGatewayHttp({
+        pluginDir: REFERENCE_DIR,
+        port: 0,
+        env: ENV,
+        inboundTokens: ['tok-a'],
+        tokenProfiles: { 'tok-a': 'ghost' },
+        agentPolicies: [policy('other')],
+      }),
+    ).rejects.toThrow(/"ghost"/);
+    await expect(
+      startGatewayHttp({
+        pluginDir: REFERENCE_DIR,
+        port: 0,
+        env: ENV,
+        inboundTokens: ['tok-a'],
+        agentPolicies: [policy('twin'), policy('twin')],
+      }),
+    ).rejects.toThrow(/"twin"/);
+  });
+});

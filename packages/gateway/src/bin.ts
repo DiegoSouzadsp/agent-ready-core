@@ -6,7 +6,8 @@
  *   ars-gateway --plugin ./plugins/neorental [--port 8808] [--host 0.0.0.0]
  */
 import { startGatewayHttp } from './http.js';
-import { resolveInboundTokens } from './bin-args.js';
+import { resolveInboundTokenEntries } from './bin-args.js';
+import { loadAgentPolicySources } from './agent-policies.js';
 
 function argValue(flag: string): string | undefined {
   const index = process.argv.indexOf(flag);
@@ -15,15 +16,40 @@ function argValue(flag: string): string | undefined {
 
 const pluginDir = argValue('--plugin');
 if (!pluginDir) {
-  console.error('Usage: ars-gateway --plugin <dir> [--port 8808] [--host 0.0.0.0] [--token <t>]... [--insecure-no-auth]');
+  console.error('Usage: ars-gateway --plugin <dir> [--port 8808] [--host 0.0.0.0] [--token <t>[=<profile>]]... [--agent-policy <file|dir>]... [--insecure-no-auth]');
   process.exit(1);
 }
 
-let inboundTokens: string[];
+function argValues(flag: string): string[] {
+  const values: string[] = [];
+  process.argv.forEach((arg, index) => {
+    if (arg !== flag) return;
+    const value = process.argv[index + 1];
+    if (value === undefined || value.trim() === '' || value.startsWith('--')) {
+      console.error(`[ars-gateway] ${flag} requires a value`);
+      process.exit(1);
+    }
+    values.push(value);
+  });
+  return values;
+}
+
+let entries: ReturnType<typeof resolveInboundTokenEntries>;
 try {
-  inboundTokens = resolveInboundTokens(process.argv, process.env);
+  entries = resolveInboundTokenEntries(process.argv, process.env);
 } catch (err) {
   console.error(`[ars-gateway] ${(err as Error).message}`);
+  process.exit(1);
+}
+const inboundTokens = entries.map((entry) => entry.token);
+const tokenProfiles: Record<string, string> = {};
+for (const entry of entries) if (entry.profile) tokenProfiles[entry.token] = entry.profile;
+
+let agentPolicies: Awaited<ReturnType<typeof loadAgentPolicySources>>;
+try {
+  agentPolicies = await loadAgentPolicySources(argValues('--agent-policy'));
+} catch (err) {
+  console.error(`[ars-gateway] failed to start: ${(err as Error).message}`);
   process.exit(1);
 }
 
@@ -32,6 +58,8 @@ startGatewayHttp({
   port: Number(argValue('--port') ?? 8808),
   host: argValue('--host'),
   inboundTokens,
+  agentPolicies,
+  tokenProfiles,
   allowInsecureNoAuth: process.argv.includes('--insecure-no-auth'),
 })
   .then(({ plugin, port }) => {

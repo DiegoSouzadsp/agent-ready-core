@@ -8,7 +8,8 @@ import { loadPlugin } from './plugin.js';
 import { registerPluginTools } from './server.js';
 import type { LoadedPlugin } from './plugin.js';
 import type { AuditSink } from '@agent-ready/adapter-mcp';
-import type { AdapterResolvers } from '@agent-ready/core';
+import type { AdapterResolvers, AgentPolicy } from '@agent-ready/core';
+import { assertUniquePolicyNames } from './agent-policies.js';
 
 export interface StartGatewayHttpOptions {
   pluginDir: string;
@@ -29,6 +30,10 @@ export interface StartGatewayHttpOptions {
    * inbound auth and X-Acting-User is trusted as sent. Distinct from the plugin's service_token (gateway → system).
    */
   inboundTokens?: string[];
+  /** Agent policies loaded by the host, added to the plugin's own `policies/`. Names must be unique across both. */
+  agentPolicies?: AgentPolicy[];
+  /** Inbound token -> agent profile name. Every profile must have a loaded policy or the start fails. */
+  tokenProfiles?: Record<string, string>;
   /** Permit listening beyond loopback with inbound auth off. Default false: the start fails instead. */
   allowInsecureNoAuth?: boolean;
 }
@@ -53,7 +58,17 @@ export interface RunningGateway {
 export async function startGatewayHttp(options: StartGatewayHttpOptions): Promise<RunningGateway> {
   const plugin = await loadPlugin(options.pluginDir, options.env ?? process.env);
   const host = options.host ?? '127.0.0.1';
-  const hasTokens = (options.inboundTokens ?? []).some((token) => token !== '');
+  // hazard: a profile that cannot be resolved must stop the start; running it as "no profile" would widen the agent's autonomy.
+  const agentPolicies = [...plugin.agentPolicies, ...(options.agentPolicies ?? [])];
+  assertUniquePolicyNames(agentPolicies);
+  const tokenProfiles = options.tokenProfiles ?? {};
+  for (const profile of new Set(Object.values(tokenProfiles))) {
+    if (!agentPolicies.some((policy) => policy.name === profile)) {
+      throw new Error(`[gateway] Token mapped to agent profile "${profile}" but no agent policy with that name is loaded (--agent-policy or policies/).`);
+    }
+  }
+  const inboundTokens = [...new Set([...(options.inboundTokens ?? []), ...Object.keys(tokenProfiles)])];
+  const hasTokens = inboundTokens.some((token) => token !== '');
   if (!hasTokens && !options.allowInsecureNoAuth && !isLoopbackHost(host)) {
     throw new Error(
       `Refusing to listen on "${host}" with inbound auth off: pass inboundTokens (--token / ARS_GATEWAY_TOKENS), bind to 127.0.0.1, or opt in with allowInsecureNoAuth (--insecure-no-auth).`,
@@ -61,20 +76,25 @@ export async function startGatewayHttp(options: StartGatewayHttpOptions): Promis
   }
   const inboundHeader = (options.actingUserHeader ?? 'x-acting-user').toLowerCase();
 
-  const tokenDigests = (options.inboundTokens ?? [])
+  const tokenDigests = inboundTokens
     .filter((token) => token !== '')
-    .map((token) => createHash('sha256').update(token).digest());
+    .map((token) => ({ digest: createHash('sha256').update(token).digest(), profile: tokenProfiles[token] }));
   if (tokenDigests.length === 0) {
     console.error('[ars-gateway] warning: inbound auth disabled; X-Acting-User is trusted');
   }
 
   // invariant: digests have equal length, so timingSafeEqual never throws and token length does not leak.
-  function isAuthorized(header: string | string[] | undefined): boolean {
+  // why: the profile is resolved from the Bearer on every request, never remembered on the session.
+  function authorize(header: string | string[] | undefined): { profile: string } | null {
     const value = Array.isArray(header) ? header[0] : header;
     const match = /^Bearer (.+)$/.exec(value ?? '');
-    if (!match) return false;
+    if (!match) return null;
     const candidate = createHash('sha256').update(match[1]).digest();
-    return tokenDigests.reduce((found, digest) => timingSafeEqual(digest, candidate) || found, false);
+    let found: { profile: string } | null = null;
+    for (const entry of tokenDigests) {
+      if (timingSafeEqual(entry.digest, candidate)) found = { profile: entry.profile ?? '' };
+    }
+    return found;
   }
 
   const sessions = new Map<string, { transport: StreamableHTTPServerTransport; server: McpServer }>();
@@ -119,7 +139,8 @@ export async function startGatewayHttp(options: StartGatewayHttpOptions): Promis
     }
 
     // why: auth runs before the acting user is read, a session is created or handleRequest is reached.
-    if (tokenDigests.length > 0 && !isAuthorized(req.headers.authorization)) {
+    const authorized = tokenDigests.length > 0 ? authorize(req.headers.authorization) : null;
+    if (tokenDigests.length > 0 && !authorized) {
       res.writeHead(401, { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer' });
       res.end(JSON.stringify({ error: 'unauthorized' }));
       return;

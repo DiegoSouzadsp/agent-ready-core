@@ -2,10 +2,11 @@
 
 import { Command } from 'commander';
 import pc from 'picocolors';
-import { AgentReady } from '@agent-ready/core';
+import { AgentReady, loadAgentPolicy } from '@agent-ready/core';
 import fs from 'node:fs';
 import path from 'node:path';
 import { INIT_TEMPLATE } from './init-template.js';
+import { AGENT_POLICY_TEMPLATE } from './agent-policy-template.js';
 import { importOpenApi, OpenApiImportError } from './openapi-init.js';
 import { buildHookScript, buildSettingsSnippet, HOOK_DOC_URL, type HookOp } from './hooks-export.js';
 
@@ -287,6 +288,36 @@ hooks
       console.log(pc.green(`\n✅ Wrote ${scriptFile}`));
       console.log(pc.green(`✅ Wrote ${snippetFile}`));
       console.log(`Merge settings.snippet.json into .claude/settings.json (format: ${HOOK_DOC_URL})`);
+    } catch (err: any) {
+      console.error(pc.red(`\n❌ Error: ${err.message}`));
+      process.exit(1);
+    }
+  });
+
+const agentCmd = program.command('agent').description('Operator-side setup for the agent that calls your systems');
+
+agentCmd
+  .command('init')
+  .description("Create a starter agent-policy.yml (the operator's autonomy ceiling for an agent)")
+  .argument('[dir]', 'target directory', '.')
+  .option('--force', 'overwrite an existing agent-policy.yml')
+  .action(async (dir: string, opts: { force?: boolean }) => {
+    try {
+      const target = path.resolve(process.cwd(), dir, 'agent-policy.yml');
+      if (fs.existsSync(target) && !opts.force) {
+        console.error(pc.red(`\n❌ ${target} already exists. Use --force to overwrite.`));
+        process.exit(1);
+      }
+      try {
+        loadAgentPolicy(AGENT_POLICY_TEMPLATE);
+      } catch (err: any) {
+        console.error(pc.red(`\n❌ Generated template is invalid: ${err.message}`));
+        process.exit(1);
+      }
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.writeFileSync(target, AGENT_POLICY_TEMPLATE, 'utf8');
+      console.log(pc.green(`\n✅ Created ${target}`));
+      console.log(`Next: ars hooks export <schema> --target claude-code --server <name> --agent-policy ${target}`);
     } catch (err: any) {
       console.error(pc.red(`\n❌ Error: ${err.message}`));
       process.exit(1);

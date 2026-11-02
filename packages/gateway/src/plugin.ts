@@ -2,6 +2,8 @@ import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse } from 'yaml';
 import { AgentReady } from '@agent-ready/core';
+import type { AgentPolicy } from '@agent-ready/core';
+import { assertUniquePolicyNames, loadPolicyDirectory } from './agent-policies.js';
 
 /** HTTP method an executor sends. */
 export type ExecutorMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
@@ -51,6 +53,8 @@ export interface LoadedPlugin {
   manifest: PluginManifest;
   agent: AgentReady;
   executorSpecs: Record<string, ExecutorSpec>;
+  /** Operator-side agent policies from `<dir>/policies/*.yml`; empty when the directory is absent. */
+  agentPolicies: AgentPolicy[];
 }
 
 const ENV_PLACEHOLDER = /\$\{(\w+)\}/g;
@@ -165,11 +169,21 @@ export async function loadPlugin(dir: string, env: NodeJS.ProcessEnv = process.e
   const rawExecutors = await readYamlFile(join(dir, executorsFile));
   const executorSpecs = (rawExecutors ?? {}) as Record<string, ExecutorSpec>;
 
+  let agentPolicies: AgentPolicy[] = [];
+  try {
+    agentPolicies = await loadPolicyDirectory(join(dir, 'policies'));
+  } catch (err) {
+    // why: only a missing policies/ is optional; an unreadable or invalid policy must stop the load.
+    if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+  }
+  assertUniquePolicyNames(agentPolicies);
+
   return {
     name: String(manifest.plugin),
     dir,
     manifest,
     agent,
     executorSpecs,
+    agentPolicies,
   };
 }

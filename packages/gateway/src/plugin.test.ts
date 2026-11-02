@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadPlugin, substituteEnv } from './plugin.js';
+import { loadAgentPolicySources } from './agent-policies.js';
 
 const REFERENCE_DIR = fileURLToPath(new URL('../plugins/_reference', import.meta.url));
 const BROKEN_DIR = fileURLToPath(new URL('../plugins/_broken', import.meta.url));
@@ -132,6 +133,51 @@ describe('loadPlugin — invalid manifests', () => {
       await expect(loadPlugin(dir, { ARS_SIGNING_SECRET: '' })).rejects.toThrow(/signing_secret/);
       const ok = await loadPlugin(dir, { ARS_SIGNING_SECRET: 'x' });
       expect(ok.manifest.auth?.signing_secret).toBe('x');
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('agent policies', () => {
+  const policy = (name: string) =>
+    `agent_policy: "1.0"
+name: ${name}
+autonomy:
+  execute_up_to: validated
+  ask_up_to: contextual
+`;
+
+  it('policies directory is loaded and invalid or duplicate policies fail', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ars-pol-'));
+    try {
+      expect((await loadPlugin(REFERENCE_DIR, FAKE_ENV)).agentPolicies).toEqual([]);
+
+      await cp(REFERENCE_DIR, dir, { recursive: true });
+      await mkdir(join(dir, 'policies'));
+      await writeFile(join(dir, 'policies', 'a.yml'), policy('alpha'));
+      await writeFile(join(dir, 'policies', 'b.yaml'), policy('beta'));
+      const plugin = await loadPlugin(dir, FAKE_ENV);
+      expect(plugin.agentPolicies.map((p) => p.name)).toEqual(['alpha', 'beta']);
+
+      await writeFile(join(dir, 'policies', 'c.yml'), policy('alpha'));
+      await expect(loadPlugin(dir, FAKE_ENV)).rejects.toThrow(/Duplicate agent policy name "alpha"/);
+      await rm(join(dir, 'policies', 'c.yml'));
+
+      await writeFile(join(dir, 'policies', 'bad.yml'), policy('bad').replace('validated', 'confirmation'));
+      await expect(loadPlugin(dir, FAKE_ENV)).rejects.toThrow(/bad\.yml/);
+      await rm(join(dir, 'policies', 'bad.yml'));
+
+      const extra = await mkdtemp(join(tmpdir(), 'ars-pol-extra-'));
+      try {
+        await writeFile(join(extra, 'gamma.yml'), policy('gamma'));
+        expect((await loadAgentPolicySources([join(extra, 'gamma.yml')])).map((p) => p.name)).toEqual(['gamma']);
+        expect((await loadAgentPolicySources([extra, join(dir, 'policies')])).map((p) => p.name)).toEqual(['gamma', 'alpha', 'beta']);
+        await expect(loadAgentPolicySources([extra, join(extra, 'gamma.yml')])).rejects.toThrow(/Duplicate agent policy name "gamma"/);
+        await expect(loadAgentPolicySources([join(extra, 'nope.yml')])).rejects.toThrow(/not found/);
+      } finally {
+        await rm(extra, { recursive: true, force: true });
+      }
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

@@ -233,6 +233,34 @@ describe('ars hooks export', () => {
   });
 });
 
+describe('ars agent init', { timeout: 60000 }, () => {
+  it('agent init writes a valid commented policy', async () => {
+    const { loadAgentPolicyFromFile } = await import('@agent-ready/core');
+    const dir = tmpDir();
+    const r = spawnSync('node', [cliPath, 'agent', 'init', dir], { encoding: 'utf8' });
+    expect(r.status).toBe(0);
+    const file = path.join(dir, 'agent-policy.yml');
+    const text = fs.readFileSync(file, 'utf8');
+    expect(text).toContain('#');
+    for (const key of ['agent_policy', 'autonomy', 'execute_up_to', 'ask_up_to', 'systems']) expect(text).toContain(key);
+    expect(() => loadAgentPolicyFromFile(file)).not.toThrow();
+    expect(r.stdout).toContain('Next:');
+    expect(r.stdout).toContain('--agent-policy');
+  });
+
+  it('agent init refuses overwrite without force', () => {
+    const dir = tmpDir();
+    const file = path.join(dir, 'agent-policy.yml');
+    fs.writeFileSync(file, 'custom: true\n');
+    const refused = spawnSync('node', [cliPath, 'agent', 'init', dir], { encoding: 'utf8' });
+    expect(refused.status).toBe(1);
+    expect(fs.readFileSync(file, 'utf8')).toBe('custom: true\n');
+    const forced = spawnSync('node', [cliPath, 'agent', 'init', dir, '--force'], { encoding: 'utf8' });
+    expect(forced.status).toBe(0);
+    expect(fs.readFileSync(file, 'utf8')).toContain('agent_policy: "1.0"');
+  });
+});
+
 describe('init --from-openapi', () => {
   const fixtureFile = path.resolve(__dirname, '__fixtures__/petstore-mini.yaml');
   const mkTmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'ars-oai-'));
