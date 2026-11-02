@@ -49,7 +49,7 @@ describe('runOperation', () => {
     const result = await runOperation(validatedOp, executor, { valor: 50 });
 
     expect(executor).toHaveBeenCalledTimes(1);
-    expect(executor).toHaveBeenCalledWith({ valor: 50, origem: 'mcp' });
+    expect(executor).toHaveBeenCalledWith({ valor: 50, origem: 'mcp' }, expect.anything());
     expect(result.isError).toBe(false);
     expect((result.structuredContent as any).type).toBe('success');
     expect((result.structuredContent as any).data).toEqual({ gasto_id: 42 });
@@ -135,7 +135,7 @@ describe('runOperation - signposts that teach', () => {
     const result = await runOperation(inferOp, executor, { titulo: 'x' }, { membro_id: 7 });
 
     expect(result.isError).toBe(false);
-    expect(executor).toHaveBeenCalledWith({ titulo: 'x', membro_id: 7 });
+    expect(executor).toHaveBeenCalledWith({ titulo: 'x', membro_id: 7 }, expect.anything());
   });
 
   it('success text carries result json and next', async () => {
@@ -578,5 +578,32 @@ describe('runOperation - hardening', () => {
     expect((result.structuredContent as any).type).toBe('blocked_transition');
     expect(fn).toHaveBeenCalledWith({ query: 'SELECT 1' });
     expect(executor).not.toHaveBeenCalled();
+  });
+});
+
+describe('runOperation - ExecutorContext', () => {
+  const op = (risk_level: Operation['risk_level'], extra: Partial<Operation> = {}) =>
+    new OperationHandle(
+      { id: 'OP-CTX', name: `op_${risk_level}`, risk_level, input_schema: { n: { type: 'int', required: true } }, ...extra } satisfies Operation,
+      noopAdapter(),
+    );
+  const accept = () => ({ server: { getClientCapabilities: () => ({ elicitation: {} }), elicitInput: vi.fn().mockResolvedValue({ action: 'accept', content: { confirm: true } }) } });
+
+  it('executor receives ExecutorContext as optional second argument', async () => {
+    const oneArg = vi.fn((input: Record<string, unknown>) => ({ got: input.n }));
+    const result = await runOperation(op('free'), oneArg, { n: 1 });
+    expect(result.isError ?? false).toBe(false);
+    expect(oneArg).toHaveBeenCalledWith({ n: 1 }, { decision: 'executed', risk_level: 'free' });
+  });
+
+  it('ExecutorContext carries decision and risk_level for every risk level', async () => {
+    for (const level of ['free', 'validated', 'contextual'] as const) {
+      const executor = vi.fn().mockResolvedValue({});
+      await runOperation(op(level), executor, { n: 1 });
+      expect(executor.mock.calls[0][1]).toEqual({ decision: 'executed', risk_level: level });
+    }
+    const executor = vi.fn().mockResolvedValue({});
+    await runOperation(op('confirmation', { human_confirmation: { message_template: 'ok?' } }), executor, { n: 1 }, {}, { server: accept() });
+    expect(executor.mock.calls[0][1]).toEqual({ decision: 'confirmed', risk_level: 'confirmation' });
   });
 });

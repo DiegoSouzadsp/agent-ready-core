@@ -10,6 +10,8 @@ export type ExecutorMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 export interface PluginAuth {
   mode?: string;
   service_token?: string;
+  /** Shared secret for the X-ARS-* HMAC proof of governance (gateway → system). Absent or empty disables signing. */
+  signing_secret?: string;
   /** Header carrying the acting user's identity. Defaults to 'X-Acting-User' when omitted. */
   acting_user_header?: string;
   /**

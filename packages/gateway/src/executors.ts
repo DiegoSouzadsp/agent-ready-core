@@ -1,5 +1,6 @@
 import type { ExecutorFn, ExecutorMap } from '@agent-ready/adapter-mcp';
 import type { ExecutorMethod, ExecutorSpec, LoadedPlugin, PluginManifest } from './plugin.js';
+import { signArsRequest } from './signature.js';
 
 const PLACEHOLDER = /\{\{(\w+)\}\}/g;
 
@@ -84,7 +85,9 @@ export function buildExecutor(
   const method = defaultMethod(spec);
   const actingUserHeader = manifest.auth?.acting_user_header ?? 'X-Acting-User';
 
-  return async (input: Record<string, unknown>): Promise<Record<string, unknown>> => {
+  const signingSecret = manifest.auth?.signing_secret;
+
+  return async (input: Record<string, unknown>, ctx?: Parameters<ExecutorFn>[1]): Promise<Record<string, unknown>> => {
     const path = renderPath(spec.path, input);
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     const url = `${baseUrl}${normalizedPath}${buildQueryString(spec.query, input)}`;
@@ -112,6 +115,25 @@ export function buildExecutor(
       for (const [key, template] of Object.entries(spec.headers)) {
         headers[key] = renderTemplate(template, input);
       }
+    }
+
+    // hazard: without ctx the decision would be invented, so an uncontextualized call is left unsigned.
+    if (signingSecret && ctx) {
+      const parsed = new URL(url);
+      const timestamp = Date.now();
+      headers['X-ARS-Timestamp'] = String(timestamp);
+      headers['X-ARS-Operation'] = operationName;
+      headers['X-ARS-Risk'] = ctx.risk_level;
+      headers['X-ARS-Decision'] = ctx.decision;
+      headers['X-ARS-Signature'] = signArsRequest({
+        secret: signingSecret,
+        timestamp,
+        method,
+        pathAndQuery: parsed.pathname + parsed.search,
+        body: body ?? '',
+        operation: operationName,
+        decision: ctx.decision,
+      });
     }
 
     const response = await fetchImpl(url, { method, headers, body });

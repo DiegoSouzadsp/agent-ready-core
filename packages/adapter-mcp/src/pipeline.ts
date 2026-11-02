@@ -323,7 +323,10 @@ async function decide(
 
   let execResult: Record<string, unknown>;
   try {
-    execResult = await executor(input);
+    execResult = await executor(input, {
+      decision: confirmed ? 'confirmed' : 'executed',
+      risk_level: op.definition.risk_level,
+    });
   } catch (err) {
     return outcome(
       errorResult(`Executor for "${op.definition.name}" failed: ${(err as Error).message}`),

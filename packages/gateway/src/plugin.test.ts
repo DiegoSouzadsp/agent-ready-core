@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { mkdtemp, cp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadPlugin, substituteEnv } from './plugin.js';
 
@@ -62,5 +65,24 @@ describe('loadPlugin — errors', () => {
 
   it('throws a clear error when executors.yml is missing', async () => {
     await expect(loadPlugin(BROKEN_DIR, FAKE_ENV)).rejects.toThrow(/executors\.yml/);
+  });
+});
+
+describe('loadPlugin — signing_secret', () => {
+  it('signing_secret is loaded and env-substituted', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ars-sign-'));
+    try {
+      await cp(REFERENCE_DIR, dir, { recursive: true });
+      await writeFile(
+        join(dir, 'plugin.yml'),
+        'plugin: reference\nsystem_base_url: https://api.example.com\nauth:\n  service_token: t\n  signing_secret: ${SIGNING_ENV}\n',
+      );
+      const plugin = await loadPlugin(dir, { SIGNING_ENV: 'from-env' });
+      expect(plugin.manifest.auth?.signing_secret).toBe('from-env');
+      const reference = await loadPlugin(REFERENCE_DIR, FAKE_ENV);
+      expect(reference.manifest.auth?.signing_secret).toBeUndefined();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
