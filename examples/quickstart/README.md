@@ -77,6 +77,22 @@ Any MCP client that can launch a stdio server (Cursor included) works the same w
 
 Also try "assign ticket 3 to agent 10" (blocked: ticket 3 is closed) and "close ticket 1, refund 500" (pending: refund above 100 needs a human).
 
+## Add an agent policy
+
+[`agent-policy.yml`](./agent-policy.yml) is the operator's side: it says how far one agent (`support-bot`) may go on these operations. It executes up to `validated`, asks at `contextual`, and never runs `delete_ticket`. Generate your own with `npx ars agent init`, and export the Claude Code hook with the policy embedded:
+
+```bash
+npx ars hooks export examples/quickstart/support-tickets.yml --target claude-code --server support-tickets --agent-policy examples/quickstart/agent-policy.yml --out .claude/ars
+```
+
+Merge `.claude/ars/settings.snippet.json` into `.claude/settings.json` and register the server as `support-tickets`. What changes in the prompts above, in Claude Code with this hook:
+
+1. "List open tickets." runs without a prompt (as without the policy).
+2. "Create a ticket without a title." is allowed, and the validation error comes back as before. (`create_ticket` is `validated`, within `execute_up_to`.)
+3. "Delete ticket 1." is refused by the hook before the server is called, with the reason "agent policy support-bot does not allow delete_ticket (confirmation)". Without the policy it would ask a human.
+
+"Assign ticket 3 to agent 10" now makes the hook ask a human before the server runs. The hook does not evaluate field-level triggers such as the refund above 100, which only the server-side pipeline sees. Policies also work in the gateway, one profile per token: see the root README, "Two-sided governance".
+
 ## Sanity check
 
 ```bash

@@ -257,6 +257,43 @@ include_fields: list[string]      # fields to include in the audit log
 
 ---
 
+## Agent policy (operator side)
+
+> Status: v0.1-draft, like the rest of this document. A separate file from the schema: the schema is written by the owner of the system, the agent policy by the operator of the agent. The schema does not reference it and is not rewritten when it changes.
+
+An agent policy states how much autonomy one agent has over the four risk levels (`free` < `validated` < `contextual` < `confirmation`).
+
+```yaml
+agent_policy: "1.0"                # required, the string "1.0"
+name: string                       # required, [A-Za-z0-9_.-]+; the agent's identity
+autonomy:                          # required
+  execute_up_to: RiskLevel         # free | validated | contextual (never confirmation)
+  ask_up_to: RiskLevel             # free | validated | contextual | confirmation
+systems:                           # optional: exceptions per system
+  <system>:                        # MCP server name (hook) or plugin name (gateway)
+    execute_up_to: RiskLevel       # optional, overrides autonomy for this system
+    ask_up_to: RiskLevel           # optional, overrides autonomy for this system
+    operations:                    # optional
+      <operation>: allow | ask | deny
+```
+
+**Validation.** A loader MUST reject a policy, listing every problem, when: `agent_policy` is not `"1.0"`; `name` is missing or outside `[A-Za-z0-9_.-]+`; `autonomy.execute_up_to` or `autonomy.ask_up_to` is missing or not a risk level; `execute_up_to` is above `ask_up_to` (in `autonomy`, or the effective pair of a system after its overrides); an operation decision is not `allow`, `ask` or `deny`. `confirmation` is never a valid `execute_up_to`, at any level of the file: a `confirmation` operation always needs a human.
+
+**Resolution.** For an operation with risk level `R` in system `S`, the decision is the first rule that applies:
+
+1. `systems.S.operations.<operation>`, if present. An `allow` on a `confirmation` operation resolves to `ask`.
+2. `R` at or below `execute_up_to` (the value of `systems.S` if set, else `autonomy`): `allow`.
+3. `R` at or below `ask_up_to` (same precedence): `ask`.
+4. Otherwise `deny`.
+
+Without a policy, the decision is the one the schema alone gives: execute up to `contextual`, ask at `confirmation`.
+
+**Enforcement.** The decision is taken before the checks in "How the schema is consumed", which are all still applied. `deny` returns a signpost of type `denied` and no executor is reached; `ask` takes the same path as a human confirmation; `allow` proceeds. An agent policy can only add a human check or a refusal: it never removes a requirement of the schema, such as `risk_level: confirmation`, `human_confirmation` or a field-level trigger. A client-side hook can apply the decision only per operation, because it does not see which fields trigger confirmation; a runtime or gateway applies it together with the schema.
+
+**Identity.** A gateway that serves several agents associates each credential with a policy `name` and passes it to the system in the `X-ARS-Agent` header (empty when the credential has none), covered by the request signature.
+
+---
+
 ## How the schema is consumed
 
 The agent is the **consumer** of the schema; it does not enforce it. Steps 1-4 are the agent's job. Steps 5-11 are performed by the runtime (`@agent-ready/core`) or by a gateway built on it, which applies them on every call regardless of what the agent decides.

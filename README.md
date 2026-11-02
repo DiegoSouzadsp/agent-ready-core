@@ -109,6 +109,26 @@ Next: ars validate petstore/agent-ready.yml
   The file holds `module: petstore-mini` with 8 operations, e.g. `listPets` (`free`), `createPet` (`validated`), `updatePet` (`contextual`), `deletePet` (`confirmation`).
 - `ars hooks export <schema> --target claude-code [--server <name>] [--out <dir>]` writes `ars-pretooluse.mjs` and `settings.snippet.json` (matcher `mcp__<name>__.*`). The hook answers `allow` for free, validated and contextual operations, `ask` for confirmation, and nothing for tools it does not know. `--server` defaults to `agent-ready`, `--out` to `.`. The hook widens autonomy according to `risk_level`: `allow` skips Claude Code's normal permission prompt, and only `confirmation` becomes `ask` (with the `message_template` rendered from the tool input).
 
+Give the agent its own ceiling (the operator's side, see "Two-sided governance" below). Real output on the quickstart schema, paths shortened:
+
+```console
+$ npx ars agent init my-agent
+Created my-agent/agent-policy.yml
+Next: ars hooks export <schema> --target claude-code --server <name> --agent-policy my-agent/agent-policy.yml
+
+$ npx ars hooks export examples/quickstart/support-tickets.yml --target claude-code --server support-tickets --agent-policy examples/quickstart/agent-policy.yml --out .claude/ars
+Wrote .claude/ars/ars-pretooluse.mjs
+Wrote .claude/ars/settings.snippet.json
+Merge settings.snippet.json into .claude/settings.json (format: https://code.claude.com/docs/en/hooks)
+
+$ echo '{"tool_name":"mcp__support-tickets__delete_ticket","tool_input":{"ticket_id":1}}' | node .claude/ars/ars-pretooluse.mjs
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"agent policy support-bot does not allow delete_ticket (confirmation); it executes up to validated and asks up to contextual"}}
+```
+
+With `--agent-policy`, the same script answers `allow` for `create_ticket` and `ask` for `close_ticket`. Without the flag the hook behaves as described above.
+
+`ars agent init [dir] [--force]` writes `<dir>/agent-policy.yml` (validated before it is written) and refuses to overwrite without `--force`.
+
 A runnable server with one operation per risk level is in [`examples/quickstart/`](examples/quickstart/).
 
 The output above has colors and emoji stripped; the FamilyOS strings are Portuguese because that schema is a real, untranslated system. `ars risk <file>` prints the same schema grouped by level.
@@ -127,6 +147,7 @@ ARS is not a replacement for MCP tool annotations or for runtime hooks. It cover
 | Signpost / `next` actions | ❌ | ❌ | ✅ Declared per operation, returned with the result |
 | Response strategy (summary vs full) | ❌ | ❌ | ✅ `mode: summary` with `summary_fields` returns only those fields plus a `next` to `detail_operation`. 🟡 Top-level fields only; `paginated` and `full` are declared, not enforced |
 | Audit | ❌ | 🟡 Possible via hook logging | ✅ One `AuditEvent` per call to the `onAudit` sink, or JSON lines on stderr with `ARS_AUDIT=stderr` (the gateway writes to stderr by default). 🟡 The schema's `audit.log` flag is not read; only `include_fields` is used |
+| Per-agent / per-identity policy | ❌ | 🟡 Possible if you write it per installation | ✅ `agent-policy.yml` sets how far a given agent may go; the hook export and the gateway (one profile per token) enforce it |
 | Where the policy lives | Client, as a hint | Client, per installation | The system's own contract |
 | Proof on the system side | ❌ | ❌ | ✅ The gateway signs each call it forwards (`X-ARS-Signature`), and the system verifies it with `verifyArsSignature`, so it can refuse calls that skipped the governance |
 | Who writes it | The tool author | The operator of the agent | The owner of the system |
@@ -155,14 +176,47 @@ Sources were read on 2026-11-02; check them for the current state.
 
 **MCP roadmap.** The roadmap lists enterprise readiness (audit trails, SSO-integrated auth, gateway behavior, configuration portability) as an area with no working group yet, and mentions SEP-1932 (DPoP) and SEP-1933 (workload identity) for authorization; risk annotations and confirmation are not in it ([roadmap](https://blog.modelcontextprotocol.io/posts/2026-mcp-roadmap/)). Separately, the MCP blog treats tool annotations as hints that clients must not trust from an untrusted server, and lists open SEPs for more annotations, such as #1913 (trust and sensitivity) and #1984 ([post](https://blog.modelcontextprotocol.io/posts/2026-03-16-tool-annotations/)). If those land, the annotations ARS emits could map onto them.
 
-**What ARS does not do (yet).** Compared with the projects above, ARS has no per-identity or per-tenant policy, no roles, no rate limits, and no asynchronous approval: confirmation is an elicitation or a `pending` result. It does not scan tool definitions or responses for injection, does not sandbox execution, does not filter output for personal data, does not coordinate several agents, and does not export OpenTelemetry; audit is an event sink or JSON lines on stderr. It has no policy language with unit tests or formal analysis, no revocation of a signed call beyond the nonce and skew window, and no versioned policy distribution. Some of these may fit ARS and some belong in the tools above; none has a date.
+**What ARS does not do (yet).** Compared with the projects above, ARS has per-agent policy (one ceiling per token profile) but no per-tenant policy, no roles, no rate limits, and no asynchronous approval: confirmation is an elicitation or a `pending` result. It does not scan tool definitions or responses for injection, does not sandbox execution, does not filter output for personal data, does not coordinate several agents, and does not export OpenTelemetry; audit is an event sink or JSON lines on stderr. It has no policy language with unit tests or formal analysis, no revocation of a signed call beyond the nonce and skew window, and no versioned policy distribution. Some of these may fit ARS and some belong in the tools above; none has a date.
+
+## Two-sided governance
+
+The schema is the system's side: the owner declares the risk of each operation. The second side is the operator's: an `agent-policy.yml`, in the same four levels, declares how far *one agent* may go on its own. Neither file knows the other; the enforcement points cross them, and neither is rewritten when the pair changes. The "where ARS sits" figure above shows the system's side; the operator's side enters through the hook and through the gateway's agent profile.
+
+```yaml
+agent_policy: "1.0"
+name: support-bot            # agent identity (letters, digits, _ . -)
+autonomy:
+  execute_up_to: validated   # free|validated|contextual: runs on its own up to this level
+  ask_up_to: contextual      # above execute_up_to and up to this level: asks a human
+  # above ask_up_to: denied. confirmation can never be execute_up_to.
+systems:                     # optional per-system exceptions (MCP server name / plugin name)
+  support-tickets:
+    execute_up_to: contextual
+    operations:
+      delete_ticket: deny    # allow|ask|deny per operation; wins over every ceiling
+```
+
+This is the file `ars agent init` writes. For one operation, the decision is the first rule that matches:
+
+1. an entry in `systems.<system>.operations` for that operation;
+2. the risk is at or below `execute_up_to` (the system's own value if set, else `autonomy`): `allow`;
+3. the risk is at or below `ask_up_to`: `ask`;
+4. otherwise `deny`.
+
+With no policy nothing changes: execute up to `contextual`, ask at `confirmation`.
+
+- **Hook.** `ars hooks export <schema> --target claude-code --server <name> --agent-policy <file>` resolves the policy per operation and embeds the result in the generated script: `allow`, `ask` or `deny` (the deny reason names the policy and its ceilings). `system` is the value of `--server`. The hook cannot see field-level confirmation triggers (`human_confirmation_if`), because it does not evaluate the tool input against the schema; the gateway can.
+- **Gateway.** `ars-gateway --plugin <dir> --token <t>=<profile> --agent-policy <file|dir>` (both repeatable), or `ARS_GATEWAY_TOKENS=a=bot1,b`, or `policies/*.yml` in the plugin directory. The profile is a policy's `name`, chosen by the Bearer token of each request. `system` is the plugin name. Before validation, `deny` returns a `denied` signpost and an audit event with `decision: 'denied'`, and the system is never called; `ask` goes through elicitation or returns `pending`. The profile reaches the system in `X-ARS-Agent`, inside the signed string. Details in [`packages/gateway`](packages/gateway/README.md).
+- **Invariant: `allow` never lowers what the system requires.** A `confirmation` operation still needs a human when the policy says `allow` (the decision becomes `ask`), and the schema's own triggers still fire. An agent policy can add a check or a refusal; it cannot remove one.
+
+Example for the quickstart server: [`examples/quickstart/agent-policy.yml`](examples/quickstart/agent-policy.yml). The format is specified in [the spec](docs/spec/agent-ready-schema-v0.1.md).
 
 ## Closing the door: gateway auth and proof of governance
 
 Two things make the gateway usable as the only way in. Both are in [`packages/gateway`](packages/gateway/README.md).
 
-- **Inbound auth.** Configure `inboundTokens`, `ars-gateway --token <t>` (repeatable) or `ARS_GATEWAY_TOKENS=a,b`. A request to `/mcp` without a valid Bearer token gets 401 before any session exists; `/healthz` stays public and returns only `{"status":"ok"}`. The default host is `127.0.0.1`. With no tokens the gateway prints a warning on stderr, trusts `X-Acting-User`, and refuses to listen beyond loopback unless you pass `--insecure-no-auth` (`allowInsecureNoAuth: true`). A `--token` with no value is an error.
-- **Proof of governance.** With `auth.signing_secret` in `plugin.yml` (`${ENV}` is accepted; a declared secret that resolves to empty fails at load), every request the gateway sends to the system carries `X-ARS-Timestamp`, `X-ARS-Nonce`, `X-ARS-Operation`, `X-ARS-Risk`, `X-ARS-Decision` (`executed` or `confirmed`) and `X-ARS-Signature` (`v1=<hex>`, HMAC-SHA256 over `timestamp \n nonce \n METHOD \n path+query \n sha256(body) \n operation \n risk \n decision \n acting_user`). The system verifies it with `verifyArsSignature`:
+- **Inbound auth.** Configure `inboundTokens`, `ars-gateway --token <t>` (repeatable) or `ARS_GATEWAY_TOKENS=a,b`. A request to `/mcp` without a valid Bearer token gets 401 before any session exists; `/healthz` stays public and returns only `{"status":"ok"}`. The default host is `127.0.0.1`. With no tokens the gateway prints a warning on stderr, trusts `X-Acting-User`, and refuses to listen beyond loopback unless you pass `--insecure-no-auth` (`allowInsecureNoAuth: true`). A `--token` with no value is an error. A token can carry an agent profile, `--token <t>=<profile>` (or `ARS_GATEWAY_TOKENS=a=bot1,b`); see "Two-sided governance".
+- **Proof of governance.** With `auth.signing_secret` in `plugin.yml` (`${ENV}` is accepted; a declared secret that resolves to empty fails at load), every request the gateway sends to the system carries `X-ARS-Timestamp`, `X-ARS-Nonce`, `X-ARS-Operation`, `X-ARS-Risk`, `X-ARS-Decision` (`executed` or `confirmed`), `X-ARS-Agent` (the token's profile, empty when it has none) and `X-ARS-Signature` (`v1=<hex>`, HMAC-SHA256 over `timestamp \n nonce \n METHOD \n path+query \n sha256(body) \n operation \n risk \n decision \n acting_user \n agent`). The system verifies it with `verifyArsSignature`:
 
 ```ts
 import { verifyArsSignature } from '@agent-ready/gateway';
@@ -171,7 +225,7 @@ app.use(express.text({ type: '*/*' })); // raw body; a GET leaves req.body as {}
 app.use((req, res, next) => {
   const v = verifyArsSignature({ method: req.method, url: req.originalUrl, body: req.body, headers: req.headers }, process.env.ARS_SIGNING_SECRET!);
   if (!v.ok) return res.status(401).json({ error: v.reason });
-  next(); // v.operation, v.risk, v.decision, v.nonce, v.actingUser are available; require v.decision === 'confirmed' on destructive routes
+  next(); // v.operation, v.risk, v.decision, v.nonce, v.actingUser, v.agent are available; require v.decision === 'confirmed' on destructive routes
 });
 ```
 
@@ -207,11 +261,12 @@ There is no text-based resume: a "CONFIRMAR" reply is not a protocol and the pac
 - Asks a human for `confirmation` operations through MCP elicitation, or returns `pending` ([`pipeline.ts`](packages/adapter-mcp/src/pipeline.ts) `askHuman`).
 - Puts the result data in the tool's text and trims it to `summary_fields` when the response strategy asks ([`pipeline.ts`](packages/adapter-mcp/src/pipeline.ts) `successResult`, `applyResponseStrategy`).
 - Emits one audit event per call to `onAudit` or stderr ([`pipeline.ts`](packages/adapter-mcp/src/pipeline.ts) `emitAudit`).
+- Applies a per-agent ceiling from `agent-policy.yml`: the exported hook answers `allow`, `ask` or `deny` per operation, and the gateway resolves it per token before validation, returning a `denied` signpost without calling the system ([`packages/core/src/agent-policy.ts`](packages/core/src/agent-policy.ts) `resolveAutonomy`).
+- Signs the agent profile into `X-ARS-Agent`, so the system sees which agent profile made each call.
 - Creates a starter schema and a Claude Code hook from a schema ([`packages/cli/src/index.ts`](packages/cli/src/index.ts): `ars init`, `ars hooks export`).
 
 ## What it can do next
 
-- **Two-sided governance (next, in progress).** Today the schema is the system's side: it declares the risk of each operation. The second side is the agent operator's: an `agent-policy.yml` using the same four levels declares how far a given agent may go on its own (for example "execute up to `validated` alone, ask at `contextual`, never run `confirmation` even with a human"), with per-system and per-operation exceptions. The enforcement points cross the two declarations: the hook export reads the policy instead of hard-coding `allow`, and the gateway maps each inbound token to a profile. Neither side needs to know the other, and neither is rewritten when the pair changes. This also gives per-identity policy, which ARS lacks today. It stays within the risk vocabulary: no tool-definition scanning, no trust scores, no sandbox; those belong to the runtime control planes listed above.
 - Export hooks for runtimes other than Claude Code.
 - Configure `resolvers` per plugin in the gateway; today only the programmatic option exists.
 - Run against a second reference system besides FamilyOS.
@@ -236,7 +291,7 @@ There is no text-based resume: a "CONFIRMAR" reply is not a protocol and the pac
 | Package | What it does |
 |---|---|
 | `packages/core` | `@agent-ready/core`: schema loader, input validation, risk assessment, signpost generation |
-| `packages/cli` | `@agent-ready/cli`: the `ars` command (`validate`, `list`, `risk`, `test`, `init`, `hooks export`) |
+| `packages/cli` | `@agent-ready/cli`: the `ars` command (`validate`, `list`, `risk`, `test`, `init`, `hooks export`, `agent init`) |
 | `packages/adapter-mcp` | Bridges an ARS schema to MCP tools, running the governance pipeline on each call (validation, state guards through `resolvers`, elicitation, audit through `onAudit`) |
 | `packages/adapter-sqlite` | Resolves state-guard predicates against SQLite |
 | `packages/adapter-rest` | Resolves predicates via HTTP |

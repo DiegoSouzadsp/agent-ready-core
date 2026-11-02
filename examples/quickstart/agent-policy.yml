@@ -1,0 +1,13 @@
+# agent-policy.yml for the support-tickets quickstart: the operator's side.
+# The schema (support-tickets.yml) says how risky each operation is; this file says
+# how far THIS agent may go on its own. Levels: free < validated < contextual < confirmation.
+agent_policy: "1.0"
+name: support-bot
+autonomy:
+  execute_up_to: validated   # list_tickets, get_ticket, create_ticket run on their own
+  ask_up_to: contextual      # assign_ticket, close_ticket ask a human first
+  # above ask_up_to: denied. confirmation can never be execute_up_to.
+systems:
+  support-tickets:           # the MCP server name (hook: --server; gateway: plugin name)
+    operations:
+      delete_ticket: deny    # wins over every ceiling: this agent never deletes
