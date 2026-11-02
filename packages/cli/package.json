@@ -1,6 +1,6 @@
 {
   "name": "@agent-ready/cli",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Command-line interface for Agent-Ready Schema.",
   "type": "module",
   "bin": {
@@ -21,14 +21,29 @@
     "directory": "packages/cli"
   },
   "dependencies": {
-    "@agent-ready/core": "*",
+    "@agent-ready/core": "^0.2.0",
     "commander": "^12.1.0",
-    "picocolors": "^1.1.1"
+    "picocolors": "^1.1.1",
+    "yaml": "^2.7.1"
   },
   "devDependencies": {
     "@types/node": "^22.15.0"
   },
   "engines": {
     "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   }
 }

@@ -10,7 +10,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json"
   },
   "dependencies": {
-    "@agent-ready/core": "*",
+    "@agent-ready/core": "^0.2.0",
     "monaco-editor": "^0.55.0"
   },
   "devDependencies": {

@@ -13,7 +13,7 @@ const program = new Command();
 program
   .name('ars')
   .description('Agent-Ready Schema CLI — Governance layer for AI agents')
-  .version('0.1.0');
+  .version('0.2.0');
 
 // ─────────────────────────────────────────────
 // Command: validate

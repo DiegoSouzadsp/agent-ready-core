@@ -14,7 +14,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "npm run lint --workspaces --if-present",
-    "clean": "npm run clean --workspaces --if-present"
+    "clean": "npm run clean --workspaces --if-present",
+    "release:check": "npm run build && npm publish --dry-run --workspaces --if-present"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

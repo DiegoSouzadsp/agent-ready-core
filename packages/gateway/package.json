@@ -1,6 +1,6 @@
 {
   "name": "@agent-ready/gateway",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Generic ARS gateway engine — serves any system as MCP tools from a declarative plugin directory (schemas + executors), no per-system code",
   "type": "module",
   "main": "./dist/index.js",
@@ -8,7 +8,9 @@
   "bin": {
     "ars-gateway": "./dist/bin.js"
   },
-  "files": ["dist", "src", "package.json"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
@@ -24,19 +26,28 @@
     "directory": "packages/gateway"
   },
   "peerDependencies": {
-    "@agent-ready/adapter-mcp": "*",
-    "@agent-ready/core": "*",
+    "@agent-ready/adapter-mcp": "^0.2.0",
+    "@agent-ready/core": "^0.2.0",
     "@modelcontextprotocol/sdk": "^1.0.0"
   },
   "dependencies": {
     "yaml": "^2.7.1"
   },
   "devDependencies": {
-    "@agent-ready/adapter-mcp": "*",
-    "@agent-ready/core": "*",
+    "@agent-ready/adapter-mcp": "^0.2.0",
+    "@agent-ready/core": "^0.2.0",
     "@modelcontextprotocol/sdk": "^1.0.0"
   },
   "engines": {
     "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   }
 }

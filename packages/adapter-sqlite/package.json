@@ -1,11 +1,13 @@
 {
   "name": "@agent-ready/adapter-sqlite",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "SQLite adapter for Agent-Ready Schema core",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist", "src", "package.json"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
@@ -21,13 +23,28 @@
     "directory": "packages/adapter-sqlite"
   },
   "peerDependencies": {
-    "@agent-ready/core": "*"
+    "@agent-ready/core": "^0.2.0",
+    "better-sqlite3": "^11.0.0||^12.0.0"
   },
   "devDependencies": {
-    "@agent-ready/core": "*",
+    "@agent-ready/core": "^0.2.0",
     "@types/better-sqlite3": "^7.6.11"
   },
   "engines": {
     "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "peerDependenciesMeta": {
+    "better-sqlite3": {
+      "optional": true
+    }
   }
 }

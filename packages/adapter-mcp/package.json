@@ -1,11 +1,13 @@
 {
   "name": "@agent-ready/adapter-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "MCP (Model Context Protocol) bridge for Agent-Ready Schema core",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist", "src", "package.json"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
@@ -21,17 +23,26 @@
     "directory": "packages/adapter-mcp"
   },
   "peerDependencies": {
-    "@agent-ready/core": "*",
+    "@agent-ready/core": "^0.2.0",
     "@modelcontextprotocol/sdk": "^1.0.0"
   },
   "dependencies": {
     "zod": "^3.24.1"
   },
   "devDependencies": {
-    "@agent-ready/core": "*",
+    "@agent-ready/core": "^0.2.0",
     "@modelcontextprotocol/sdk": "^1.0.0"
   },
   "engines": {
     "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   }
 }

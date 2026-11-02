@@ -1,6 +1,6 @@
 {
   "name": "@agent-ready/adapter-rest",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "REST API adapter for Agent-Ready Schema core",
   "type": "module",
   "main": "./dist/index.js",
@@ -20,12 +20,24 @@
     "directory": "packages/adapter-rest"
   },
   "peerDependencies": {
-    "@agent-ready/core": "*"
+    "@agent-ready/core": "^0.2.0"
   },
   "devDependencies": {
-    "@agent-ready/core": "*"
+    "@agent-ready/core": "^0.2.0"
   },
   "engines": {
     "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
   }
 }
