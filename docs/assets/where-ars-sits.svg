@@ -1,0 +1,105 @@
+<svg width="1200" height="580" viewBox="0 0 1200 580" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="sits-title sits-desc">
+  <title id="sits-title">Where Agent-Ready Schema sits</title>
+  <desc id="sits-desc">Left to right: the agent, a client hook, the MCP transport, the ARS runtime that validates, guards, confirms, executes, audits and returns a signpost, and the owner system. One agent-ready.yml, written once by the system owner, feeds both the exported hook and the runtime.</desc>
+  <defs>
+    <style>
+      <![CDATA[
+      :root {
+        --bg: #F4F5F2; --panel: #FFFFFF; --ink: #171A1F; --muted: #5B6470; --line: #C7CBC3;
+        --accent: #1E8E85; --accent-bg: #DDF1EE;
+        --third: #6B7380; --third-bg: #ECEEEA;
+        --risk-free: #2E9E68; --risk-free-bg: #E4F3EA;
+        --risk-valid: #A8820F; --risk-valid-bg: #F7F0D2;
+        --risk-ctx: #C46A1C; --risk-ctx-bg: #FAE8D6;
+        --risk-confirm: #B84440; --risk-confirm-bg: #F7E4E3;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #12151B; --panel: #171B22; --ink: #E7E9EA; --muted: #97A0AC; --line: #2E333C;
+          --accent: #4FD1C5; --accent-bg: #153A38;
+          --third: #97A0AC; --third-bg: #1E232B;
+          --risk-free: #3FB27F; --risk-free-bg: #163325;
+          --risk-valid: #E0BC3C; --risk-valid-bg: #372E10;
+          --risk-ctx: #EE9A4D; --risk-ctx-bg: #3A2514;
+          --risk-confirm: #E1726E; --risk-confirm-bg: #3A1D1C;
+        }
+      }
+      svg { background: var(--bg); }
+      text { font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace; fill: var(--ink); font-size: 13px; }
+      .serif { font-family: ui-serif, "Iowan Old Style", Georgia, "Times New Roman", serif; }
+      .title { font-size: 23px; font-weight: 700; }
+      .sub { font-size: 14px; fill: var(--muted); font-style: italic; }
+      .h { font-size: 16px; font-weight: 700; }
+      .b { font-weight: 700; }
+      .m { fill: var(--muted); }
+      .lab { font-size: 13px; letter-spacing: 0.08em; fill: var(--muted); font-weight: 600; }
+      .acc { fill: var(--accent); }
+      .box { fill: var(--panel); stroke: var(--line); stroke-width: 1.2; }
+      .third { fill: var(--third-bg); stroke: var(--third); stroke-width: 1.2; }
+      .ars { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 1.8; }
+      .ln { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+      .lnA { stroke: var(--accent); stroke-width: 1.8; fill: none; }
+      .lnR { stroke: var(--risk-confirm); stroke-width: 1.5; fill: none; }
+      .hair { stroke: var(--line); stroke-width: 1; }
+      .dot { stroke: var(--accent); stroke-width: 1.2; stroke-dasharray: 3 4; opacity: 0.7; }
+      ]]>
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"></path></marker>
+    <marker id="arrowA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"></path></marker>
+    <marker id="arrowR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--risk-confirm)"></path></marker>
+  </defs>
+  <rect x="0" y="0" width="1200" height="580" fill="var(--bg)"></rect>
+  <text x="40" y="42" class="title">Where ARS sits</text>
+  <text x="40" y="68" class="sub serif">The owner writes the policy once. The hook anticipates it on the client; the runtime enforces it on the server.</text>
+  <rect class="ars" x="250" y="95" width="700" height="72" rx="3"></rect>
+  <text x="600" y="124" class="h acc" text-anchor="middle">agent-ready.yml</text>
+  <text x="600" y="147" text-anchor="middle">written once by the system owner</text>
+  <line x1="350" y1="167" x2="350" y2="268" class="lnA" marker-end="url(#arrowA)"></line>
+  <text x="362" y="222" class="acc b">exported policy</text>
+  <line x1="845" y1="167" x2="845" y2="268" class="lnA" marker-end="url(#arrowA)"></line>
+  <text x="857" y="222" class="acc b">imposed policy</text>
+  <text x="45" y="258" class="lab">CLIENT SIDE</text>
+  <text x="695" y="258" class="lab">SYSTEM SIDE</text>
+  <rect class="third" x="45" y="272" width="170" height="190" rx="3"></rect>
+  <text x="130" y="302" class="h" text-anchor="middle">Agent</text>
+  <text x="130" y="328" class="m" text-anchor="middle">LLM</text>
+  <text x="130" y="358" text-anchor="middle">picks tools</text>
+  <text x="130" y="379" text-anchor="middle">to call</text>
+  <rect class="third" x="255" y="272" width="190" height="190" rx="3"></rect>
+  <text x="350" y="302" class="h" text-anchor="middle">Hook</text>
+  <text x="350" y="328" class="m" text-anchor="middle">client</text>
+  <text x="350" y="358" text-anchor="middle">Claude Code</text>
+  <text x="350" y="379" text-anchor="middle">PreToolUse</text>
+  <text x="350" y="400" class="b" text-anchor="middle">allow / ask / deny</text>
+  <text x="350" y="421" class="m" text-anchor="middle">ars hooks export</text>
+  <rect class="third" x="485" y="272" width="170" height="190" rx="3"></rect>
+  <text x="570" y="302" class="h" text-anchor="middle">MCP</text>
+  <text x="570" y="328" class="m" text-anchor="middle">transport</text>
+  <text x="570" y="358" text-anchor="middle">tools</text>
+  <text x="570" y="379" text-anchor="middle">annotations</text>
+  <text x="570" y="400" text-anchor="middle">elicitation</text>
+  <rect class="ars" x="695" y="272" width="300" height="190" rx="3"></rect>
+  <text x="845" y="302" class="h acc" text-anchor="middle">ARS runtime</text>
+  <text x="845" y="328" class="m" text-anchor="middle">owner's side of the wire</text>
+  <text x="845" y="358" class="b" text-anchor="middle">validate → guards → confirmation</text>
+  <text x="845" y="379" class="b" text-anchor="middle">→ execute → audit → signpost</text>
+  <text x="845" y="400" text-anchor="middle"> </text>
+  <text x="845" y="421" class="m" text-anchor="middle">errors teach, state is checked,</text>
+  <text x="845" y="442" class="m" text-anchor="middle">humans are asked, calls logged</text>
+  <rect class="third" x="1035" y="272" width="120" height="190" rx="3"></rect>
+  <text x="1095" y="302" class="h" text-anchor="middle">System</text>
+  <text x="1095" y="328" class="m" text-anchor="middle">API / DB</text>
+  <text x="1095" y="358" text-anchor="middle">owned by</text>
+  <text x="1095" y="379" text-anchor="middle">the system</text>
+  <text x="1095" y="400" text-anchor="middle">owner</text>
+  <line x1="215" y1="367" x2="253" y2="367" class="ln" marker-end="url(#arrow)"></line>
+  <line x1="445" y1="367" x2="483" y2="367" class="ln" marker-end="url(#arrow)"></line>
+  <line x1="655" y1="367" x2="693" y2="367" class="ln" marker-end="url(#arrow)"></line>
+  <line x1="995" y1="367" x2="1033" y2="367" class="ln" marker-end="url(#arrow)"></line>
+  <rect class="third" x="45" y="492" width="22" height="16" rx="3"></rect>
+  <text x="78" y="505">third-party: Agent, Hook, MCP, System</text>
+  <rect class="ars" x="480" y="492" width="22" height="16" rx="3"></rect>
+  <text x="513" y="505">ARS: policy file and runtime</text>
+  <line x1="40" y1="525" x2="1160" y2="525" class="hair"></line>
+  <text x="600" y="555" class="h" text-anchor="middle">MCP transports. ARS declares and enforces. Hooks anticipate.</text>
+</svg>

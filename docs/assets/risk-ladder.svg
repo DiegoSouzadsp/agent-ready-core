@@ -1,0 +1,120 @@
+<svg width="1200" height="720" viewBox="0 0 1200 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="ladder-title ladder-desc">
+  <title id="ladder-title">Risk ladder: what happens at each level</title>
+  <desc id="ladder-desc">Four risk levels, FREE, VALIDATED, CONTEXTUAL and CONFIRMATION, each with its policy, what the runtime does, the MCP annotation emitted and the hook decision. Only CONFIRMATION makes the hook ask.</desc>
+  <defs>
+    <style>
+      <![CDATA[
+      :root {
+        --bg: #F4F5F2; --panel: #FFFFFF; --ink: #171A1F; --muted: #5B6470; --line: #C7CBC3;
+        --accent: #1E8E85; --accent-bg: #DDF1EE;
+        --third: #6B7380; --third-bg: #ECEEEA;
+        --risk-free: #2E9E68; --risk-free-bg: #E4F3EA;
+        --risk-valid: #A8820F; --risk-valid-bg: #F7F0D2;
+        --risk-ctx: #C46A1C; --risk-ctx-bg: #FAE8D6;
+        --risk-confirm: #B84440; --risk-confirm-bg: #F7E4E3;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #12151B; --panel: #171B22; --ink: #E7E9EA; --muted: #97A0AC; --line: #2E333C;
+          --accent: #4FD1C5; --accent-bg: #153A38;
+          --third: #97A0AC; --third-bg: #1E232B;
+          --risk-free: #3FB27F; --risk-free-bg: #163325;
+          --risk-valid: #E0BC3C; --risk-valid-bg: #372E10;
+          --risk-ctx: #EE9A4D; --risk-ctx-bg: #3A2514;
+          --risk-confirm: #E1726E; --risk-confirm-bg: #3A1D1C;
+        }
+      }
+      svg { background: var(--bg); }
+      text { font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace; fill: var(--ink); font-size: 13px; }
+      .serif { font-family: ui-serif, "Iowan Old Style", Georgia, "Times New Roman", serif; }
+      .title { font-size: 23px; font-weight: 700; }
+      .sub { font-size: 14px; fill: var(--muted); font-style: italic; }
+      .h { font-size: 16px; font-weight: 700; }
+      .b { font-weight: 700; }
+      .m { fill: var(--muted); }
+      .lab { font-size: 13px; letter-spacing: 0.08em; fill: var(--muted); font-weight: 600; }
+      .acc { fill: var(--accent); }
+      .box { fill: var(--panel); stroke: var(--line); stroke-width: 1.2; }
+      .third { fill: var(--third-bg); stroke: var(--third); stroke-width: 1.2; }
+      .ars { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 1.8; }
+      .ln { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+      .lnA { stroke: var(--accent); stroke-width: 1.8; fill: none; }
+      .lnR { stroke: var(--risk-confirm); stroke-width: 1.5; fill: none; }
+      .hair { stroke: var(--line); stroke-width: 1; }
+      .dot { stroke: var(--accent); stroke-width: 1.2; stroke-dasharray: 3 4; opacity: 0.7; }
+      ]]>
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"></path></marker>
+    <marker id="arrowA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"></path></marker>
+    <marker id="arrowR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--risk-confirm)"></path></marker>
+  </defs>
+  <rect x="0" y="0" width="1200" height="720" fill="var(--bg)"></rect>
+  <text x="40" y="42" class="title">What happens at each risk level</text>
+  <text x="40" y="68" class="sub serif">One level per operation, declared by the owner. Example operations come from examples/quickstart.</text>
+  <text x="62" y="112" class="lab">LEVEL</text>
+  <text x="300" y="112" class="lab">POLICY</text>
+  <text x="560" y="112" class="lab">RUNTIME DOES</text>
+  <text x="920" y="112" class="lab">MCP HINT</text>
+  <text x="1070" y="112" class="lab">HOOK</text>
+  <line x1="40" y1="122" x2="1160" y2="122" class="hair"></line>
+  <rect class="box" x="40" y="136" width="1120" height="110" rx="3"></rect>
+  <rect x="40" y="136" width="8" height="110" fill="var(--risk-free)"></rect>
+  <rect x="62" y="152" width="160" height="28" rx="3" fill="var(--risk-free-bg)"></rect>
+  <text x="142" y="171" text-anchor="middle" class="b" fill="var(--risk-free)">FREE</text>
+  <text x="62" y="208" class="b">list_tickets</text>
+  <text x="62" y="228" class="m">quickstart operation</text>
+  <text x="300" y="168">Executes immediately.</text>
+  <text x="300" y="190">Pure read, no state</text>
+  <text x="300" y="212">change.</text>
+  <text x="560" y="168">Runs the executor right away.</text>
+  <text x="560" y="190">No gate in the way.</text>
+  <text x="920" y="171" class="b">readOnlyHint</text>
+  <rect x="1070" y="152" width="70" height="28" rx="3" fill="var(--risk-free-bg)" stroke="var(--risk-free)"></rect>
+  <text x="1105" y="171" text-anchor="middle" class="b" fill="var(--risk-free)">allow</text>
+  <rect class="box" x="40" y="262" width="1120" height="110" rx="3"></rect>
+  <rect x="40" y="262" width="8" height="110" fill="var(--risk-valid)"></rect>
+  <rect x="62" y="278" width="160" height="28" rx="3" fill="var(--risk-valid-bg)"></rect>
+  <text x="142" y="297" text-anchor="middle" class="b" fill="var(--risk-valid)">VALIDATED</text>
+  <text x="62" y="334" class="b">create_ticket</text>
+  <text x="62" y="354" class="m">quickstart operation</text>
+  <text x="300" y="294">Validates input, then</text>
+  <text x="300" y="316">executes.</text>
+  <text x="300" y="338">Creates new state.</text>
+  <text x="560" y="294">validate input: required, type,</text>
+  <text x="560" y="316">enum, rules, FK; then execute.</text>
+  <text x="920" y="297" class="b" fill="var(--muted)">none emitted</text>
+  <rect x="1070" y="278" width="70" height="28" rx="3" fill="var(--risk-valid-bg)" stroke="var(--risk-valid)"></rect>
+  <text x="1105" y="297" text-anchor="middle" class="b" fill="var(--risk-valid)">allow</text>
+  <rect class="box" x="40" y="388" width="1120" height="110" rx="3"></rect>
+  <rect x="40" y="388" width="8" height="110" fill="var(--risk-ctx)"></rect>
+  <rect x="62" y="404" width="160" height="28" rx="3" fill="var(--risk-ctx-bg)"></rect>
+  <text x="142" y="423" text-anchor="middle" class="b" fill="var(--risk-ctx)">CONTEXTUAL</text>
+  <text x="62" y="460" class="b">assign_ticket</text>
+  <text x="62" y="480" class="m">quickstart operation</text>
+  <text x="300" y="420">Validates input and checks</text>
+  <text x="300" y="442">real system state first.</text>
+  <text x="300" y="464">Modifies existing state.</text>
+  <text x="560" y="420">validate input, then check real</text>
+  <text x="560" y="442">system state via state_guards;</text>
+  <text x="560" y="464">blocked_transition if a guard fails</text>
+  <text x="920" y="423" class="b" fill="var(--muted)">none emitted</text>
+  <rect x="1070" y="404" width="70" height="28" rx="3" fill="var(--risk-ctx-bg)" stroke="var(--risk-ctx)"></rect>
+  <text x="1105" y="423" text-anchor="middle" class="b" fill="var(--risk-ctx)">allow</text>
+  <rect class="box" x="40" y="514" width="1120" height="110" rx="3"></rect>
+  <rect x="40" y="514" width="8" height="110" fill="var(--risk-confirm)"></rect>
+  <rect x="62" y="530" width="160" height="28" rx="3" fill="var(--risk-confirm-bg)"></rect>
+  <text x="142" y="549" text-anchor="middle" class="b" fill="var(--risk-confirm)">CONFIRMATION</text>
+  <text x="62" y="586" class="b">delete_ticket</text>
+  <text x="62" y="606" class="m">quickstart operation</text>
+  <text x="300" y="546">Requires explicit human</text>
+  <text x="300" y="568">confirmation.</text>
+  <text x="300" y="590">Irreversible.</text>
+  <text x="560" y="546">validate, guards, then ask a human:</text>
+  <text x="560" y="568">elicitation accept executes;</text>
+  <text x="560" y="590">decline or no elicitation: pending</text>
+  <text x="920" y="549" class="b">destructiveHint</text>
+  <rect x="1070" y="530" width="70" height="28" rx="3" fill="var(--risk-confirm-bg)" stroke="var(--risk-confirm)"></rect>
+  <text x="1105" y="549" text-anchor="middle" class="b" fill="var(--risk-confirm)">ask</text>
+  <line x1="40" y1="650" x2="1160" y2="650" class="hair"></line>
+  <text x="40" y="680" class="serif">Annotations are hints the client may ignore; the runtime enforces the same level on the server.</text>
+</svg>

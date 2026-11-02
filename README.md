@@ -4,7 +4,15 @@ An open standard for describing, in the system's own contract, what an AI agent 
 
 **Status:** v0.1 draft spec with one reference implementation (FamilyOS, the author's own system). Contributions and a second adopter are the next step.
 
+![Where ARS sits: Agent, Hook, MCP, ARS runtime and System, with agent-ready.yml feeding the hook and the runtime](docs/assets/where-ars-sits.svg)
+
+*The owner writes agent-ready.yml once; the hook anticipates it on the client and the ARS runtime enforces it on the server.*
+
 ## Risk levels
+
+![Risk ladder: FREE, VALIDATED, CONTEXTUAL and CONFIRMATION with policy, runtime behavior, MCP annotation and hook decision](docs/assets/risk-ladder.svg)
+
+*Four levels, each with its runtime behavior, MCP annotation and hook decision; only CONFIRMATION makes the hook ask.*
 
 Every operation declares one level. The system owner writes it once; any agent consumes it.
 
@@ -117,6 +125,10 @@ In short: ARS does not compete with annotations or hooks. The MCP adapter alread
 
 ## How confirmation works today
 
+![Lifecycle of a tools/call: validation, state guards, human gate, executor, signpost, with an audit event on every call](docs/assets/call-lifecycle.svg)
+
+*One tools/call through the pipeline, with its signposts and the audit event emitted on every path.*
+
 In the MCP adapter, an operation needs a human when `risk_level` is `confirmation`, or when `autonomy_policy`, `human_confirmation.required` or a field-level `human_confirmation_if` trigger says so. The gate lives in [`packages/adapter-mcp/src/pipeline.ts`](packages/adapter-mcp/src/pipeline.ts) (`decide`, which calls `askHuman`), after validation and state guards and before the executor.
 
 - **Client supports MCP elicitation:** `askHuman` calls `elicitInput` with the rendered `message_template` and a required boolean `confirm`. Only `accept` with `confirm: true` runs the executor. `decline`, `cancel` or `confirm: false` return a `pending` signpost saying the human declined, and the executor is not called.
@@ -141,6 +153,10 @@ There is no text-based resume: a "CONFIRMAR" reply is not a protocol and the pac
 - Publish the packages to npm.
 
 ## Pains it solves
+
+![Without ARS versus with ARS for the request delete ticket 1](docs/assets/with-vs-without.svg)
+
+*The same request, delete ticket 1: safety by luck versus safety by structure.*
 
 - The autonomy decision written into each integration's prompt is declared once in the schema.
 - A raw protocol error the agent cannot fix becomes a signpost with the fields to correct.

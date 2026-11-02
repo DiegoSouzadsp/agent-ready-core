@@ -1,0 +1,109 @@
+<svg width="1200" height="720" viewBox="0 0 1200 720" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="vs-title vs-desc">
+  <title id="vs-title">Without ARS versus with ARS</title>
+  <desc id="vs-desc">Two panels for the same request, delete ticket 1. Without ARS: generic description, the agent decides alone whether to ask, a raw -32602 error, execution and no trace. With ARS: risk in the description, hook and elicitation, an error that teaches, execution only after accept, and an audit JSONL line.</desc>
+  <defs>
+    <style>
+      <![CDATA[
+      :root {
+        --bg: #F4F5F2; --panel: #FFFFFF; --ink: #171A1F; --muted: #5B6470; --line: #C7CBC3;
+        --accent: #1E8E85; --accent-bg: #DDF1EE;
+        --third: #6B7380; --third-bg: #ECEEEA;
+        --risk-free: #2E9E68; --risk-free-bg: #E4F3EA;
+        --risk-valid: #A8820F; --risk-valid-bg: #F7F0D2;
+        --risk-ctx: #C46A1C; --risk-ctx-bg: #FAE8D6;
+        --risk-confirm: #B84440; --risk-confirm-bg: #F7E4E3;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #12151B; --panel: #171B22; --ink: #E7E9EA; --muted: #97A0AC; --line: #2E333C;
+          --accent: #4FD1C5; --accent-bg: #153A38;
+          --third: #97A0AC; --third-bg: #1E232B;
+          --risk-free: #3FB27F; --risk-free-bg: #163325;
+          --risk-valid: #E0BC3C; --risk-valid-bg: #372E10;
+          --risk-ctx: #EE9A4D; --risk-ctx-bg: #3A2514;
+          --risk-confirm: #E1726E; --risk-confirm-bg: #3A1D1C;
+        }
+      }
+      svg { background: var(--bg); }
+      text { font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace; fill: var(--ink); font-size: 13px; }
+      .serif { font-family: ui-serif, "Iowan Old Style", Georgia, "Times New Roman", serif; }
+      .title { font-size: 23px; font-weight: 700; }
+      .sub { font-size: 14px; fill: var(--muted); font-style: italic; }
+      .h { font-size: 16px; font-weight: 700; }
+      .b { font-weight: 700; }
+      .m { fill: var(--muted); }
+      .lab { font-size: 13px; letter-spacing: 0.08em; fill: var(--muted); font-weight: 600; }
+      .acc { fill: var(--accent); }
+      .box { fill: var(--panel); stroke: var(--line); stroke-width: 1.2; }
+      .third { fill: var(--third-bg); stroke: var(--third); stroke-width: 1.2; }
+      .ars { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 1.8; }
+      .ln { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+      .lnA { stroke: var(--accent); stroke-width: 1.8; fill: none; }
+      .lnR { stroke: var(--risk-confirm); stroke-width: 1.5; fill: none; }
+      .hair { stroke: var(--line); stroke-width: 1; }
+      .dot { stroke: var(--accent); stroke-width: 1.2; stroke-dasharray: 3 4; opacity: 0.7; }
+      ]]>
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"></path></marker>
+    <marker id="arrowA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"></path></marker>
+    <marker id="arrowR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--risk-confirm)"></path></marker>
+  </defs>
+  <rect x="0" y="0" width="1200" height="720" fill="var(--bg)"></rect>
+  <text x="40" y="42" class="title">Same request, two outcomes</text>
+  <rect class="box" x="400" y="62" width="400" height="40" rx="3"></rect>
+  <text x="600" y="88" class="b" text-anchor="middle">Agent: "delete ticket 1"</text>
+  <rect class="box" x="40" y="122" width="540" height="500" rx="3" ></rect>
+  <text x="60" y="150" class="h" fill="var(--risk-confirm)">WITHOUT ARS</text>
+  <rect x="60" y="170" width="500" height="58" rx="3" fill="var(--panel)" stroke="var(--risk-confirm)" stroke-width="1.2"></rect>
+  <rect x="60" y="170" width="6" height="58" fill="var(--risk-confirm)"></rect>
+  <text x="80" y="194" class="b">Generic tool description</text>
+  <text x="80" y="214" class="m">"Deletes a ticket." No risk marker.</text>
+  <line x1="310" y1="229" x2="310" y2="259" class="lnR" marker-end="url(#arrowR)"></line>
+  <rect x="60" y="260" width="500" height="58" rx="3" fill="var(--panel)" stroke="var(--risk-confirm)" stroke-width="1.2"></rect>
+  <rect x="60" y="260" width="6" height="58" fill="var(--risk-confirm)"></rect>
+  <text x="80" y="284" class="b">Agent decides alone whether to ask</text>
+  <text x="80" y="304" class="m">depends on the model remembering</text>
+  <line x1="310" y1="319" x2="310" y2="349" class="lnR" marker-end="url(#arrowR)"></line>
+  <rect x="60" y="350" width="500" height="58" rx="3" fill="var(--panel)" stroke="var(--risk-confirm)" stroke-width="1.2"></rect>
+  <rect x="60" y="350" width="6" height="58" fill="var(--risk-confirm)"></rect>
+  <text x="80" y="374" class="b">Missing field: raw -32602</text>
+  <text x="80" y="394" class="m">Invalid params; the agent cannot fix it</text>
+  <line x1="310" y1="409" x2="310" y2="439" class="lnR" marker-end="url(#arrowR)"></line>
+  <rect x="60" y="440" width="500" height="58" rx="3" fill="var(--panel)" stroke="var(--risk-confirm)" stroke-width="1.2"></rect>
+  <rect x="60" y="440" width="6" height="58" fill="var(--risk-confirm)"></rect>
+  <text x="80" y="464" class="b">Executes</text>
+  <text x="80" y="484" class="m">no gate between intent and effect</text>
+  <line x1="310" y1="499" x2="310" y2="529" class="lnR" marker-end="url(#arrowR)"></line>
+  <rect x="60" y="530" width="500" height="58" rx="3" fill="var(--panel)" stroke="var(--risk-confirm)" stroke-width="1.2"></rect>
+  <rect x="60" y="530" width="6" height="58" fill="var(--risk-confirm)"></rect>
+  <text x="80" y="554" class="b">No trace</text>
+  <text x="80" y="574" class="m">nothing records what the agent decided</text>
+  <rect class="box" x="620" y="122" width="540" height="500" rx="3" fill="var(--accent-bg)" stroke="var(--accent)"></rect>
+  <text x="640" y="150" class="h" fill="var(--accent)">WITH ARS</text>
+  <rect x="640" y="170" width="500" height="58" rx="3" fill="var(--panel)" stroke="var(--accent)" stroke-width="1.2"></rect>
+  <rect x="640" y="170" width="6" height="58" fill="var(--accent)"></rect>
+  <text x="660" y="194" class="b">Description carries [risk: confirmation]</text>
+  <text x="660" y="214" class="m">destructiveHint emitted by the adapter</text>
+  <line x1="890" y1="229" x2="890" y2="259" class="lnA" marker-end="url(#arrowA)"></line>
+  <rect x="640" y="260" width="500" height="58" rx="3" fill="var(--panel)" stroke="var(--accent)" stroke-width="1.2"></rect>
+  <rect x="640" y="260" width="6" height="58" fill="var(--accent)"></rect>
+  <text x="660" y="284" class="b">Hook asks; server requires elicitation</text>
+  <text x="660" y="304" class="m">ask on the client, gate in the pipeline</text>
+  <line x1="890" y1="319" x2="890" y2="349" class="lnA" marker-end="url(#arrowA)"></line>
+  <rect x="640" y="350" width="500" height="58" rx="3" fill="var(--panel)" stroke="var(--accent)" stroke-width="1.2"></rect>
+  <rect x="640" y="350" width="6" height="58" fill="var(--accent)"></rect>
+  <text x="660" y="374" class="b">Error becomes Reason / What to do</text>
+  <text x="660" y="394" class="m">validation_error lists the fields to fix</text>
+  <line x1="890" y1="409" x2="890" y2="439" class="lnA" marker-end="url(#arrowA)"></line>
+  <rect x="640" y="440" width="500" height="58" rx="3" fill="var(--panel)" stroke="var(--accent)" stroke-width="1.2"></rect>
+  <rect x="640" y="440" width="6" height="58" fill="var(--accent)"></rect>
+  <text x="660" y="464" class="b">Executes only after accept</text>
+  <text x="660" y="484" class="m">decline or no elicitation: pending</text>
+  <line x1="890" y1="499" x2="890" y2="529" class="lnA" marker-end="url(#arrowA)"></line>
+  <rect x="640" y="530" width="500" height="58" rx="3" fill="var(--panel)" stroke="var(--accent)" stroke-width="1.2"></rect>
+  <rect x="640" y="530" width="6" height="58" fill="var(--accent)"></rect>
+  <text x="660" y="554" class="b">Audit JSONL</text>
+  <text x="660" y="574" class="m">one event per call, errors included</text>
+  <line x1="40" y1="650" x2="1160" y2="650" class="hair"></line>
+  <text x="600" y="685" class="h" text-anchor="middle">Safety by luck vs safety by structure.</text>
+</svg>

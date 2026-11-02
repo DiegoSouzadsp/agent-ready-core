@@ -1,0 +1,129 @@
+<svg width="1200" height="860" viewBox="0 0 1200 860" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="life-title life-desc">
+  <title id="life-title">What happens on a tools/call</title>
+  <desc id="life-desc">Vertical flow of one tools/call: input, infer_from_context fill, ARS validation, state guards through resolvers, the human gate with MCP elicitation or a pending signpost, the executor, summary_fields and the success signpost. Failures return validation_error or blocked_transition. An audit event is emitted for every call, including errors.</desc>
+  <defs>
+    <style>
+      <![CDATA[
+      :root {
+        --bg: #F4F5F2; --panel: #FFFFFF; --ink: #171A1F; --muted: #5B6470; --line: #C7CBC3;
+        --accent: #1E8E85; --accent-bg: #DDF1EE;
+        --third: #6B7380; --third-bg: #ECEEEA;
+        --risk-free: #2E9E68; --risk-free-bg: #E4F3EA;
+        --risk-valid: #A8820F; --risk-valid-bg: #F7F0D2;
+        --risk-ctx: #C46A1C; --risk-ctx-bg: #FAE8D6;
+        --risk-confirm: #B84440; --risk-confirm-bg: #F7E4E3;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #12151B; --panel: #171B22; --ink: #E7E9EA; --muted: #97A0AC; --line: #2E333C;
+          --accent: #4FD1C5; --accent-bg: #153A38;
+          --third: #97A0AC; --third-bg: #1E232B;
+          --risk-free: #3FB27F; --risk-free-bg: #163325;
+          --risk-valid: #E0BC3C; --risk-valid-bg: #372E10;
+          --risk-ctx: #EE9A4D; --risk-ctx-bg: #3A2514;
+          --risk-confirm: #E1726E; --risk-confirm-bg: #3A1D1C;
+        }
+      }
+      svg { background: var(--bg); }
+      text { font-family: ui-monospace, "SF Mono", "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace; fill: var(--ink); font-size: 13px; }
+      .serif { font-family: ui-serif, "Iowan Old Style", Georgia, "Times New Roman", serif; }
+      .title { font-size: 23px; font-weight: 700; }
+      .sub { font-size: 14px; fill: var(--muted); font-style: italic; }
+      .h { font-size: 16px; font-weight: 700; }
+      .b { font-weight: 700; }
+      .m { fill: var(--muted); }
+      .lab { font-size: 13px; letter-spacing: 0.08em; fill: var(--muted); font-weight: 600; }
+      .acc { fill: var(--accent); }
+      .box { fill: var(--panel); stroke: var(--line); stroke-width: 1.2; }
+      .third { fill: var(--third-bg); stroke: var(--third); stroke-width: 1.2; }
+      .ars { fill: var(--accent-bg); stroke: var(--accent); stroke-width: 1.8; }
+      .ln { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+      .lnA { stroke: var(--accent); stroke-width: 1.8; fill: none; }
+      .lnR { stroke: var(--risk-confirm); stroke-width: 1.5; fill: none; }
+      .hair { stroke: var(--line); stroke-width: 1; }
+      .dot { stroke: var(--accent); stroke-width: 1.2; stroke-dasharray: 3 4; opacity: 0.7; }
+      ]]>
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"></path></marker>
+    <marker id="arrowA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"></path></marker>
+    <marker id="arrowR" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--risk-confirm)"></path></marker>
+  </defs>
+  <rect x="0" y="0" width="1200" height="860" fill="var(--bg)"></rect>
+  <text x="40" y="36" class="title">What happens on a call</text>
+  <rect x="40" y="70" width="44" height="730" rx="3" class="ars"></rect>
+  <text x="62" y="435" text-anchor="middle" transform="rotate(-90 62 435)" class="b acc">AUDIT EVENT: always, one per call, including errors</text>
+  <rect class="box" x="320" y="80" width="340" height="50" rx="3"></rect>
+  <text x="490" y="101" class="b" text-anchor="middle">tools/call</text>
+  <text x="490" y="120" class="m" text-anchor="middle">name + arguments from the agent</text>
+  <line x1="84" y1="105" x2="318" y2="105" class="dot"></line>
+  <rect class="ars" x="320" y="160" width="340" height="50" rx="3"></rect>
+  <text x="490" y="181" class="b" text-anchor="middle">fill infer_from_context</text>
+  <text x="490" y="200" class="m" text-anchor="middle">missing fields filled from context</text>
+  <line x1="84" y1="185" x2="318" y2="185" class="dot"></line>
+  <rect class="ars" x="320" y="240" width="340" height="50" rx="3"></rect>
+  <text x="490" y="261" class="b" text-anchor="middle">ARS validation</text>
+  <text x="490" y="280" class="m" text-anchor="middle">required, type, enum, rules, FK</text>
+  <line x1="84" y1="265" x2="318" y2="265" class="dot"></line>
+  <rect class="ars" x="320" y="320" width="340" height="50" rx="3"></rect>
+  <text x="490" y="341" class="b" text-anchor="middle">state_guards via resolvers</text>
+  <text x="490" y="360" class="m" text-anchor="middle">real system state checked</text>
+  <line x1="84" y1="345" x2="318" y2="345" class="dot"></line>
+  <rect class="ars" x="320" y="400" width="340" height="50" rx="3"></rect>
+  <text x="490" y="421" class="b" text-anchor="middle">needs human?</text>
+  <text x="490" y="440" class="m" text-anchor="middle">confirmation risk, autonomy, trigger</text>
+  <line x1="84" y1="425" x2="318" y2="425" class="dot"></line>
+  <rect class="third" x="320" y="570" width="340" height="50" rx="3"></rect>
+  <text x="490" y="591" class="b" text-anchor="middle">executor</text>
+  <text x="490" y="610" class="m" text-anchor="middle">calls the owner's system</text>
+  <line x1="84" y1="595" x2="318" y2="595" class="dot"></line>
+  <rect class="ars" x="320" y="650" width="340" height="50" rx="3"></rect>
+  <text x="490" y="671" class="b" text-anchor="middle">summary_fields</text>
+  <text x="490" y="690" class="m" text-anchor="middle">response trimmed to the declared fields</text>
+  <line x1="84" y1="675" x2="318" y2="675" class="dot"></line>
+  <rect class="ars" x="320" y="730" width="340" height="50" rx="3"></rect>
+  <text x="490" y="751" class="b" text-anchor="middle">success signpost</text>
+  <text x="490" y="770" class="m" text-anchor="middle">data + next</text>
+  <line x1="84" y1="755" x2="318" y2="755" class="dot"></line>
+  <line x1="490" y1="130" x2="490" y2="159" class="ln" marker-end="url(#arrow)"></line>
+  <line x1="490" y1="210" x2="490" y2="239" class="ln" marker-end="url(#arrow)"></line>
+  <line x1="490" y1="290" x2="490" y2="319" class="ln" marker-end="url(#arrow)"></line>
+  <line x1="490" y1="370" x2="490" y2="399" class="ln" marker-end="url(#arrow)"></line>
+  <line x1="490" y1="620" x2="490" y2="649" class="ln" marker-end="url(#arrow)"></line>
+  <line x1="490" y1="700" x2="490" y2="729" class="ln" marker-end="url(#arrow)"></line>
+  <line x1="490" y1="450" x2="490" y2="569" class="ln" marker-end="url(#arrow)"></line>
+  <text x="500" y="515">no</text>
+  <line x1="660" y1="265" x2="719" y2="265" class="lnR" marker-end="url(#arrowR)"></line>
+  <text x="668" y="257" class="b">fail</text>
+  <rect x="720" y="236" width="440" height="58" rx="3" fill="var(--risk-confirm-bg)" stroke="var(--risk-confirm)" stroke-width="1.4"></rect>
+  <text x="734" y="258" class="b">validation_error signpost</text>
+  <text x="734" y="278" class="m">Reason / What to do / errors. Executor not called.</text>
+  <line x1="660" y1="345" x2="719" y2="345" class="lnR" marker-end="url(#arrowR)"></line>
+  <text x="668" y="337" class="b">fail</text>
+  <rect x="720" y="316" width="440" height="58" rx="3" fill="var(--risk-confirm-bg)" stroke="var(--risk-confirm)" stroke-width="1.4"></rect>
+  <text x="734" y="338" class="b">blocked_transition signpost</text>
+  <text x="734" y="358" class="m">state forbids it. Executor not called.</text>
+  <line x1="660" y1="425" x2="719" y2="425" class="ln" marker-end="url(#arrow)"></line>
+  <text x="668" y="417" class="b">yes</text>
+  <rect class="box" x="720" y="400" width="300" height="50" rx="3"></rect>
+  <text x="870" y="421" class="b" text-anchor="middle">client supports elicitation?</text>
+  <text x="870" y="440" class="m" text-anchor="middle">MCP elicitInput</text>
+  <line x1="870" y1="450" x2="870" y2="484" class="ln" marker-end="url(#arrow)"></line>
+  <text x="880" y="473" class="b">yes</text>
+  <rect class="box" x="720" y="485" width="300" height="60" rx="3"></rect>
+  <text x="870" y="508" class="b" text-anchor="middle">ask the human</text>
+  <text x="870" y="528" class="m" text-anchor="middle">accept: continues to executor</text>
+  <path d="M720 515 H690 V595 H662" class="ln" marker-end="url(#arrow)"></path>
+  <text x="672" y="540" class="b" text-anchor="end">accept</text>
+  <rect x="720" y="575" width="300" height="60" rx="3" fill="var(--risk-ctx-bg)" stroke="var(--risk-ctx)" stroke-width="1.4"></rect>
+  <text x="870" y="598" class="b" text-anchor="middle">pending signpost</text>
+  <text x="870" y="618" class="m" text-anchor="middle">executor not called</text>
+  <line x1="870" y1="545" x2="870" y2="574" class="ln" marker-end="url(#arrow)"></line>
+  <text x="880" y="565" class="b">decline</text>
+  <path d="M1020 425 H1060 V605 H1022" class="ln" marker-end="url(#arrow)"></path>
+  <text x="1070" y="520" class="b">no</text>
+  <line x1="660" y1="755" x2="719" y2="755" class="ln" marker-end="url(#arrow)"></line>
+  <rect class="box" x="720" y="730" width="300" height="50" rx="3"></rect>
+  <text x="870" y="751" class="b" text-anchor="middle">result back to the agent</text>
+  <text x="870" y="770" class="m" text-anchor="middle">text carries the data</text>
+  <text x="320" y="830" class="m">Signpost names are the real ones returned by the pipeline.</text>
+</svg>
