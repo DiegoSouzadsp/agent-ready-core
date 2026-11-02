@@ -638,7 +638,7 @@ describe('runOperation - agent autonomy', () => {
       executor,
       {},
       {},
-      { autonomy: () => 'deny', agent: () => 'strict', onAudit: (e) => events.push(e) },
+      { autonomy: () => ({ decision: 'deny', reason: 'agent policy strict does not allow op_autonomia (validated)' }), onAudit: (e) => events.push(e) },
     );
     expect(executor).not.toHaveBeenCalled();
     expect((result.structuredContent as any).type).toBe('denied');
@@ -648,23 +648,29 @@ describe('runOperation - agent autonomy', () => {
     expect(events[0].risk_level).toBe('validated');
   });
 
+  it('autonomy deny without a reason falls back to the core signpost default', async () => {
+    const result = await runOperation(op('validated'), vi.fn(), { n: 1 }, {}, { autonomy: () => ({ decision: 'deny' }) });
+    expect((result.structuredContent as any).type).toBe('denied');
+    expect((result.structuredContent as any).reason).toContain('not allowed for this agent');
+  });
+
   it('autonomy ask reuses the human confirmation path', async () => {
     const executor = vi.fn().mockResolvedValue({});
     const events: AuditEvent[] = [];
     const onAudit = (e: AuditEvent) => events.push(e);
 
-    await runOperation(op('validated'), executor, { n: 1 }, {}, { autonomy: () => 'ask', server: elicit(accept), onAudit });
+    await runOperation(op('validated'), executor, { n: 1 }, {}, { autonomy: () => ({ decision: 'ask' }), server: elicit(accept), onAudit });
     expect(executor).toHaveBeenCalledTimes(1);
     expect(executor.mock.calls[0][1]).toEqual({ decision: 'confirmed', risk_level: 'validated' });
     expect(events[0].decision).toBe('confirmed');
 
     const declined = vi.fn();
-    await runOperation(op('validated'), declined, { n: 1 }, {}, { autonomy: () => 'ask', server: elicit({ action: 'decline' }), onAudit });
+    await runOperation(op('validated'), declined, { n: 1 }, {}, { autonomy: () => ({ decision: 'ask' }), server: elicit({ action: 'decline' }), onAudit });
     expect(declined).not.toHaveBeenCalled();
     expect(events[1].decision).toBe('declined');
 
     const none = vi.fn();
-    const result = await runOperation(op('validated'), none, { n: 1 }, {}, { autonomy: () => 'ask', onAudit });
+    const result = await runOperation(op('validated'), none, { n: 1 }, {}, { autonomy: () => ({ decision: 'ask' }), onAudit });
     expect(none).not.toHaveBeenCalled();
     expect((result.structuredContent as any).type).toBe('pending');
     expect(events[2].decision).toBe('pending');
@@ -672,7 +678,7 @@ describe('runOperation - agent autonomy', () => {
 
   it('autonomy allow never lowers what the system requires', async () => {
     const executor = vi.fn();
-    const result = await runOperation(op('confirmation'), executor, { n: 1 }, {}, { autonomy: () => 'allow' });
+    const result = await runOperation(op('confirmation'), executor, { n: 1 }, {}, { autonomy: () => ({ decision: 'allow' }) });
     expect((result.structuredContent as any).type).toBe('pending');
     expect(executor).not.toHaveBeenCalled();
 
@@ -680,12 +686,12 @@ describe('runOperation - agent autonomy', () => {
       input_schema: { n: { type: 'int', required: true, human_confirmation_if: { gt: 5 } } },
     });
     const triggeredExec = vi.fn();
-    const pending = await runOperation(triggered, triggeredExec, { n: 10 }, {}, { autonomy: () => 'allow' });
+    const pending = await runOperation(triggered, triggeredExec, { n: 10 }, {}, { autonomy: () => ({ decision: 'allow' }) });
     expect((pending.structuredContent as any).type).toBe('pending');
     expect(triggeredExec).not.toHaveBeenCalled();
 
     const plain = vi.fn().mockResolvedValue({});
-    await runOperation(op('validated'), plain, { n: 1 }, {}, { autonomy: () => 'allow' });
+    await runOperation(op('validated'), plain, { n: 1 }, {}, { autonomy: () => ({ decision: 'allow' }) });
     expect(plain.mock.calls[0][1]).toEqual({ decision: 'executed', risk_level: 'validated' });
   });
 
@@ -702,11 +708,11 @@ operations:
 `);
     const server = { registerTool: vi.fn() };
     const executor = vi.fn();
-    registerArsTools(server as any, agent, { registrar: executor }, { autonomy: () => 'deny', agent: () => 'bot9' });
+    registerArsTools(server as any, agent, { registrar: executor }, { autonomy: () => ({ decision: 'deny', reason: 'custom reason bot9' }) });
     const [, , handler] = server.registerTool.mock.calls.find((c) => c[0] === 'registrar')!;
     const result = await handler({ valor: 5 });
     expect(result.structuredContent.type).toBe('denied');
-    expect(result.structuredContent.reason).toContain('bot9');
+    expect(result.structuredContent.reason).toBe('custom reason bot9');
     expect(executor).not.toHaveBeenCalled();
   });
 });

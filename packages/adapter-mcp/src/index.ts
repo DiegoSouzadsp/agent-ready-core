@@ -48,8 +48,6 @@ export interface RegisterArsToolsOptions {
   onAudit?: AuditSink;
   /** Operator-side ceiling for the calling agent, forwarded to runOperation on every call. */
   autonomy?: RunOperationOptions['autonomy'];
-  /** Profile name behind `autonomy`, used in the denial reason. */
-  agent?: RunOperationOptions['agent'];
 }
 
 function unenforcedGuardCount(op: OperationHandle, resolvers: AdapterResolvers | undefined): number {
@@ -96,7 +94,6 @@ export function registerArsTools(
           onAudit: options.onAudit,
           server: server as unknown as ElicitationHost,
           autonomy: options.autonomy,
-          agent: options.agent,
         },
       );
 
