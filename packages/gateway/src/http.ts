@@ -8,6 +8,7 @@ import { loadPlugin } from './plugin.js';
 import { registerPluginTools } from './server.js';
 import type { LoadedPlugin } from './plugin.js';
 import type { AuditSink } from '@agent-ready/adapter-mcp';
+import { resolveAutonomy } from '@agent-ready/core';
 import type { AdapterResolvers, AgentPolicy } from '@agent-ready/core';
 import { assertUniquePolicyNames } from './agent-policies.js';
 
@@ -98,13 +99,25 @@ export async function startGatewayHttp(options: StartGatewayHttpOptions): Promis
   }
 
   const sessions = new Map<string, { transport: StreamableHTTPServerTransport; server: McpServer }>();
-  const actingUserStore = new AsyncLocalStorage<string | undefined>();
+  const requestStore = new AsyncLocalStorage<{ actingUser?: string; profile?: string }>();
+  const policiesByName = new Map(agentPolicies.map((policy) => [policy.name, policy]));
 
   // why: elicitation needs the client's initialize capabilities at tools/call time, so one McpServer lives per session.
   async function createSession() {
     const server = new McpServer({ name: `ars-gateway-${plugin.name}`, version: '0.1.0' });
     registerPluginTools(server, plugin, {
-      getActingUser: () => actingUserStore.getStore(),
+      getActingUser: () => requestStore.getStore()?.actingUser,
+      getAgentProfile: () => requestStore.getStore()?.profile || undefined,
+      // invariant: no profile means no ceiling, so a token without one keeps today's behaviour.
+      autonomy: (op) => {
+        const policy = policiesByName.get(requestStore.getStore()?.profile ?? '');
+        if (!policy) return 'allow';
+        return resolveAutonomy(policy, {
+          system: plugin.name,
+          operation: op.definition.name,
+          risk_level: op.definition.risk_level,
+        });
+      },
       fetchImpl: options.fetchImpl,
       resolvers: options.resolvers,
       onAudit: options.onAudit,
@@ -164,7 +177,7 @@ export async function startGatewayHttp(options: StartGatewayHttpOptions): Promis
       }
 
       // why: identity is per call even though the server is per session, so it is read from the request in flight.
-      await actingUserStore.run(actingUser, () => session!.transport.handleRequest(req, res));
+      await requestStore.run({ actingUser, profile: authorized?.profile || undefined }, () => session!.transport.handleRequest(req, res));
     } catch (err) {
       if (!res.headersSent) {
         res.writeHead(500, { 'Content-Type': 'application/json' });

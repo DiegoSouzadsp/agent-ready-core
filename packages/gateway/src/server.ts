@@ -1,6 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { registerArsTools, stderrAuditSink } from '@agent-ready/adapter-mcp';
-import type { AuditSink } from '@agent-ready/adapter-mcp';
+import type { AuditSink, RegisterArsToolsOptions } from '@agent-ready/adapter-mcp';
 import type { AdapterResolvers } from '@agent-ready/core';
 import { loadPlugin } from './plugin.js';
 import { buildExecutorMap } from './executors.js';
@@ -22,6 +22,10 @@ export interface RegisterPluginToolsOptions {
   actingUser?: string;
   /** Resolved on every executor call; takes precedence over actingUser. */
   getActingUser?: () => string | undefined;
+  /** Agent profile of the request in flight; signed into X-ARS-Agent and named in a denial. */
+  getAgentProfile?: () => string | undefined;
+  /** Operator-side ceiling resolved per call; forwarded to the pipeline. */
+  autonomy?: RegisterArsToolsOptions['autonomy'];
   fetchImpl?: typeof fetch;
   context?: Record<string, unknown>;
   exposeContract?: boolean;
@@ -62,12 +66,15 @@ export function registerPluginTools(
   const executors = buildExecutorMap(plugin, {
     fetchImpl: opts.fetchImpl,
     getActingUser: opts.getActingUser ?? (() => opts.actingUser),
+    getAgentProfile: opts.getAgentProfile,
   });
 
   registerArsTools(server, plugin.agent, executors, {
     context: opts.context,
     exposeContract: opts.exposeContract,
     resolvers: opts.resolvers,
+    autonomy: opts.autonomy,
+    agent: opts.getAgentProfile,
     // why: a gateway runs unattended, so decisions leave a trail unless the host picks another sink.
     onAudit: opts.onAudit ?? stderrAuditSink,
   });
