@@ -2,7 +2,7 @@
 
 import { Command } from 'commander';
 import pc from 'picocolors';
-import { AgentReady, loadAgentPolicy } from '@agent-ready/core';
+import { AgentReady, loadAgentPolicy, loadAgentPolicyFromFile, resolveAutonomy, type AgentPolicy, type RiskLevel } from '@agent-ready/core';
 import fs from 'node:fs';
 import path from 'node:path';
 import { INIT_TEMPLATE } from './init-template.js';
@@ -263,21 +263,44 @@ hooks
   .requiredOption('--target <target>', 'client to export for (claude-code)')
   .option('--server <name>', 'MCP server name as registered in the client', 'agent-ready')
   .option('--out <dir>', 'output directory', '.')
-  .action(async (schema: string, opts: { target: string; server: string; out: string }) => {
+  .option('--agent-policy <file>', 'agent-policy.yml: embed allow/ask/deny per operation for this agent')
+  .action(async (schema: string, opts: { target: string; server: string; out: string; agentPolicy?: string }) => {
     try {
       if (opts.target !== 'claude-code') {
         console.error(pc.red(`\n❌ Unknown --target '${opts.target}'. Supported: claude-code`));
         process.exit(1);
       }
+      let policy: AgentPolicy | undefined;
+      if (opts.agentPolicy) {
+        const policyPath = path.resolve(process.cwd(), opts.agentPolicy);
+        try {
+          policy = loadAgentPolicyFromFile(policyPath);
+        } catch (err: any) {
+          console.error(pc.red(`\n❌ ${policyPath}\n${err.message}`));
+          process.exit(1);
+        }
+      }
       const agent = await AgentReady.fromFile(path.resolve(process.cwd(), schema));
-      const ops: HookOp[] = agent.allOperations.map((o: any) => ({
-        name: o.name,
-        risk_level: o.risk_level,
-        reason:
-          o.human_confirmation?.message_template ??
-          o.description ??
-          `Operation ${o.name} requires confirmation`,
-      }));
+      const sys = policy?.systems?.[opts.server];
+      const execUpTo = sys?.execute_up_to ?? policy?.autonomy.execute_up_to;
+      const askUpTo = sys?.ask_up_to ?? policy?.autonomy.ask_up_to;
+      const ops: HookOp[] = agent.allOperations.map((o: any) => {
+        const op: HookOp = {
+          name: o.name,
+          risk_level: o.risk_level,
+          reason:
+            o.human_confirmation?.message_template ??
+            o.description ??
+            `Operation ${o.name} requires confirmation`,
+        };
+        if (policy) {
+          op.decision = resolveAutonomy(policy, { system: opts.server, operation: o.name, risk_level: o.risk_level as RiskLevel });
+          op.policy_reason = op.decision === 'deny'
+            ? `agent policy ${policy.name} does not allow ${o.name} (${o.risk_level}); it executes up to ${execUpTo} and asks up to ${askUpTo}`
+            : `agent policy ${policy.name} asks a human before ${o.name} (${o.risk_level}); it executes up to ${execUpTo}`;
+        }
+        return op;
+      });
       const outDir = path.resolve(process.cwd(), opts.out);
       fs.mkdirSync(outDir, { recursive: true });
       const scriptFile = path.join(outDir, 'ars-pretooluse.mjs');

@@ -19,6 +19,13 @@
   "allow_output": {
     "hookSpecificOutput": { "hookEventName": "PreToolUse", "permissionDecision": "allow" }
   },
+  "deny_output": {
+    "hookSpecificOutput": {
+      "hookEventName": "PreToolUse",
+      "permissionDecision": "deny",
+      "permissionDecisionReason": "agent policy support-bot does not allow delete_ticket (confirmation); it executes up to validated and asks up to contextual"
+    }
+  },
   "ask_output": {
     "hookSpecificOutput": {
       "hookEventName": "PreToolUse",

@@ -261,6 +261,117 @@ describe('ars agent init', { timeout: 60000 }, () => {
   });
 });
 
+describe('ars hooks export --agent-policy', { timeout: 60000 }, () => {
+  const fixture = JSON.parse(
+    fs.readFileSync(path.resolve(__dirname, '__fixtures__/claude-code-pretooluse.json'), 'utf8'),
+  );
+  const BASE = 'agent_policy: "1.0"\nname: bot\nautonomy:\n  execute_up_to: validated\n  ask_up_to: contextual\n';
+
+  function exportWith(policyYaml: string, server = 's') {
+    const schemaDir = tmpDir();
+    expect(spawnSync('node', [cliPath, 'init', schemaDir]).status).toBe(0);
+    const policyFile = path.join(tmpDir(), 'agent-policy.yml');
+    fs.writeFileSync(policyFile, policyYaml);
+    const out = tmpDir();
+    const r = spawnSync('node', [
+      cliPath, 'hooks', 'export', path.join(schemaDir, 'agent-ready.yml'),
+      '--target', 'claude-code', '--server', server, '--out', out, '--agent-policy', policyFile,
+    ], { encoding: 'utf8' });
+    return { r, out, script: path.join(out, 'ars-pretooluse.mjs') };
+  }
+
+  function runHook(script: string, toolName: string, raw?: string) {
+    const r = spawnSync('node', [script], {
+      input: raw ?? JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: toolName, tool_input: { ticket_id: 1 } }),
+      encoding: 'utf8',
+    });
+    return { status: r.status, stdout: r.stdout.trim() };
+  }
+  const decisionOf = (script: string, op: string, server = 's') =>
+    JSON.parse(runHook(script, `mcp__${server}__${op}`).stdout).hookSpecificOutput;
+
+  it('hook embeds resolved decisions per operation', () => {
+    const { r, script } = exportWith(BASE);
+    expect(r.status).toBe(0);
+    expect(decisionOf(script, 'list_tickets').permissionDecision).toBe('allow');
+    expect(decisionOf(script, 'create_ticket').permissionDecision).toBe('allow');
+    expect(decisionOf(script, 'assign_ticket').permissionDecision).toBe('ask');
+    expect(decisionOf(script, 'delete_ticket').permissionDecision).toBe('deny');
+  });
+
+  it('deny reason names profile operation risk and ceiling', () => {
+    const { script } = exportWith(BASE);
+    const out = decisionOf(script, 'delete_ticket');
+    expect(out.hookEventName).toBe('PreToolUse');
+    const reason: string = out.permissionDecisionReason;
+    for (const part of ['bot', 'delete', 'confirmation', 'validated', 'contextual']) expect(reason).toContain(part);
+  });
+
+  it('ask reason for non confirmation risk names profile and risk', () => {
+    const { script } = exportWith(BASE);
+    const reason: string = decisionOf(script, 'assign_ticket').permissionDecisionReason;
+    expect(reason).toContain('bot');
+    expect(reason).toContain('contextual');
+    const plain = tmpDir();
+    const schemaDir = tmpDir();
+    spawnSync('node', [cliPath, 'init', schemaDir]);
+    spawnSync('node', [cliPath, 'hooks', 'export', path.join(schemaDir, 'agent-ready.yml'), '--target', 'claude-code', '--server', 's', '--out', plain]);
+    const noPolicy = decisionOf(path.join(plain, 'ars-pretooluse.mjs'), 'delete_ticket');
+    expect(noPolicy.permissionDecision).toBe('ask');
+    expect(noPolicy.permissionDecisionReason).not.toContain('agent policy');
+  });
+
+  it('policy exceptions and system key reach the generated hook', () => {
+    const yaml = BASE + 'systems:\n  s:\n    execute_up_to: contextual\n    operations:\n      list_tickets: deny\n      delete_ticket: allow\n';
+    const forS = exportWith(yaml, 's');
+    expect(decisionOf(forS.script, 'list_tickets').permissionDecision).toBe('deny');
+    expect(decisionOf(forS.script, 'delete_ticket').permissionDecision).toBe('ask');
+    expect(decisionOf(forS.script, 'assign_ticket').permissionDecision).toBe('allow');
+    const forT = exportWith(yaml, 't');
+    expect(decisionOf(forT.script, 'assign_ticket', 't').permissionDecision).toBe('ask');
+  });
+
+  it('hooks export with a bad policy fails and writes nothing', () => {
+    const schemaDir = tmpDir();
+    spawnSync('node', [cliPath, 'init', schemaDir]);
+    const schemaFile = path.join(schemaDir, 'agent-ready.yml');
+    const out1 = tmpDir();
+    const missing = path.join(tmpDir(), 'nope.yml');
+    const r1 = spawnSync('node', [cliPath, 'hooks', 'export', schemaFile, '--target', 'claude-code', '--out', out1, '--agent-policy', missing], { encoding: 'utf8' });
+    expect(r1.status).toBe(1);
+    expect(r1.stderr).toContain('nope.yml');
+    expect(fs.readdirSync(out1)).toEqual([]);
+    const bad = exportWith('agent_policy: "1.0"\nname: bot\nautonomy:\n  execute_up_to: confirmation\n  ask_up_to: confirmation\n');
+    expect(bad.r.status).toBe(1);
+    expect(bad.r.stderr).toContain('confirmation');
+    expect(fs.readdirSync(bad.out)).toEqual([]);
+  });
+
+  it('hook with policy ignores foreign and unknown events', () => {
+    const { script } = exportWith(BASE);
+    for (const tool of ['mcp__other__list_tickets', 'Bash', 'mcp__s__nope']) {
+      const res = runHook(script, tool);
+      expect(res.status).toBe(0);
+      expect(res.stdout).toBe('');
+    }
+    const invalid = runHook(script, '', '{not json');
+    expect(invalid.status).toBe(0);
+    expect(invalid.stdout).toBe('');
+  });
+
+  it('fixture covers allow ask and deny outputs', () => {
+    const { script } = exportWith(BASE);
+    const run = (op: string) => JSON.parse(runHook(script, `mcp__s__${op}`).stdout);
+    const keys = (o: any) => Object.keys(o.hookSpecificOutput).sort();
+    expect(run('list_tickets')).toEqual(fixture.allow_output);
+    expect(keys(run('assign_ticket'))).toEqual(keys(fixture.ask_output));
+    const deny = run('delete_ticket');
+    expect(keys(deny)).toEqual(keys(fixture.deny_output));
+    expect(deny.hookSpecificOutput.permissionDecision).toBe('deny');
+    expect(deny.hookSpecificOutput.hookEventName).toBe('PreToolUse');
+  });
+});
+
 describe('init --from-openapi', () => {
   const fixtureFile = path.resolve(__dirname, '__fixtures__/petstore-mini.yaml');
   const mkTmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'ars-oai-'));
