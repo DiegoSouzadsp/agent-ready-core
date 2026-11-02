@@ -48,8 +48,8 @@ process.stdin.on('end', () => {
   };
   const input = event && event.tool_input && typeof event.tool_input === 'object' ? event.tool_input : {};
   const render = (t) => t.replace(/\\{\\{\\s*(\\w+)\\s*\\}\\}/g, (m, k) => (input[k] === undefined || input[k] === null ? m : String(input[k])));
-  if (decision === 'deny') out.hookSpecificOutput.permissionDecisionReason = entry.policy_reason;
-  else if (decision === 'ask') out.hookSpecificOutput.permissionDecisionReason = confirm ? render(entry.reason) : entry.policy_reason;
+  if (decision !== 'allow' && entry.policy_reason) out.hookSpecificOutput.permissionDecisionReason = entry.policy_reason;
+  else if (decision === 'ask' && confirm) out.hookSpecificOutput.permissionDecisionReason = render(entry.reason);
   process.stdout.write(JSON.stringify(out) + '\\n');
 });
 `;

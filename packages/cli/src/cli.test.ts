@@ -206,7 +206,7 @@ describe('ars hooks export', () => {
 
   it('hook keeps unresolved placeholders and quotes the script path', () => {
     const schemaDir = tmpDir();
-    spawnSync('node', [cliPath, 'init', schemaDir]);
+    expect(spawnSync('node', [cliPath, 'init', schemaDir]).status).toBe(0);
     const out = path.join(tmpDir(), 'with space');
     const r = spawnSync('node', [
       cliPath, 'hooks', 'export', path.join(schemaDir, 'agent-ready.yml'),
@@ -233,6 +233,7 @@ describe('ars hooks export', () => {
   });
 });
 
+// why: each test spawns node 2-4 times and a loaded machine overruns the default 5 s.
 describe('ars agent init', { timeout: 60000 }, () => {
   it('agent init writes a valid commented policy', async () => {
     const { loadAgentPolicyFromFile } = await import('@agent-ready/core');
@@ -261,13 +262,14 @@ describe('ars agent init', { timeout: 60000 }, () => {
   });
 });
 
+// why: each test spawns node 2-4 times and a loaded machine overruns the default 5 s.
 describe('ars hooks export --agent-policy', { timeout: 60000 }, () => {
   const fixture = JSON.parse(
     fs.readFileSync(path.resolve(__dirname, '__fixtures__/claude-code-pretooluse.json'), 'utf8'),
   );
   const BASE = 'agent_policy: "1.0"\nname: bot\nautonomy:\n  execute_up_to: validated\n  ask_up_to: contextual\n';
 
-  function exportWith(policyYaml: string, server = 's') {
+  function exportWith(policyYaml: string, server = 's', extra: string[] = []) {
     const schemaDir = tmpDir();
     expect(spawnSync('node', [cliPath, 'init', schemaDir]).status).toBe(0);
     const policyFile = path.join(tmpDir(), 'agent-policy.yml');
@@ -275,7 +277,7 @@ describe('ars hooks export --agent-policy', { timeout: 60000 }, () => {
     const out = tmpDir();
     const r = spawnSync('node', [
       cliPath, 'hooks', 'export', path.join(schemaDir, 'agent-ready.yml'),
-      '--target', 'claude-code', '--server', server, '--out', out, '--agent-policy', policyFile,
+      '--target', 'claude-code', '--server', server, '--out', out, '--agent-policy', policyFile, ...extra,
     ], { encoding: 'utf8' });
     return { r, out, script: path.join(out, 'ars-pretooluse.mjs') };
   }
@@ -314,8 +316,8 @@ describe('ars hooks export --agent-policy', { timeout: 60000 }, () => {
     expect(reason).toContain('contextual');
     const plain = tmpDir();
     const schemaDir = tmpDir();
-    spawnSync('node', [cliPath, 'init', schemaDir]);
-    spawnSync('node', [cliPath, 'hooks', 'export', path.join(schemaDir, 'agent-ready.yml'), '--target', 'claude-code', '--server', 's', '--out', plain]);
+    expect(spawnSync('node', [cliPath, 'init', schemaDir]).status).toBe(0);
+    expect(spawnSync('node', [cliPath, 'hooks', 'export', path.join(schemaDir, 'agent-ready.yml'), '--target', 'claude-code', '--server', 's', '--out', plain]).status).toBe(0);
     const noPolicy = decisionOf(path.join(plain, 'ars-pretooluse.mjs'), 'delete_ticket');
     expect(noPolicy.permissionDecision).toBe('ask');
     expect(noPolicy.permissionDecisionReason).not.toContain('agent policy');
@@ -331,9 +333,30 @@ describe('ars hooks export --agent-policy', { timeout: 60000 }, () => {
     expect(decisionOf(forT.script, 'assign_ticket', 't').permissionDecision).toBe('ask');
   });
 
+  it('system flag picks the policy key independently of the server prefix', () => {
+    const yaml = BASE + 'systems:\n  tickets:\n    operations:\n      list_tickets: deny\n';
+    const withSystem = exportWith(yaml, 's', ['--system', 'tickets']);
+    expect(withSystem.r.status).toBe(0);
+    expect(withSystem.r.stderr).not.toContain('no entry');
+    expect(decisionOf(withSystem.script, 'list_tickets').permissionDecision).toBe('deny');
+    const withoutSystem = exportWith(yaml, 's');
+    expect(withoutSystem.r.status).toBe(0);
+    expect(decisionOf(withoutSystem.script, 'list_tickets').permissionDecision).toBe('allow');
+  });
+
+  it('warns when no systems key matches the resolved system', () => {
+    const yaml = BASE + 'systems:\n  tickets:\n    execute_up_to: contextual\n';
+    const r = exportWith(yaml, 's');
+    expect(r.r.status).toBe(0);
+    expect(r.r.stderr).toContain('tickets');
+    expect(r.r.stderr).toContain("'s'");
+    const quiet = exportWith(BASE, 's');
+    expect(quiet.r.stderr).not.toContain('no entry');
+  });
+
   it('hooks export with a bad policy fails and writes nothing', () => {
     const schemaDir = tmpDir();
-    spawnSync('node', [cliPath, 'init', schemaDir]);
+    expect(spawnSync('node', [cliPath, 'init', schemaDir]).status).toBe(0);
     const schemaFile = path.join(schemaDir, 'agent-ready.yml');
     const out1 = tmpDir();
     const missing = path.join(tmpDir(), 'nope.yml');

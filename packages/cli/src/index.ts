@@ -2,7 +2,7 @@
 
 import { Command } from 'commander';
 import pc from 'picocolors';
-import { AgentReady, loadAgentPolicy, loadAgentPolicyFromFile, resolveAutonomy, type AgentPolicy, type RiskLevel } from '@agent-ready/core';
+import { AgentReady, loadAgentPolicy, loadAgentPolicyFromFile, explainAutonomy, type AgentPolicy, type RiskLevel } from '@agent-ready/core';
 import fs from 'node:fs';
 import path from 'node:path';
 import { INIT_TEMPLATE } from './init-template.js';
@@ -264,7 +264,8 @@ hooks
   .option('--server <name>', 'MCP server name as registered in the client', 'agent-ready')
   .option('--out <dir>', 'output directory', '.')
   .option('--agent-policy <file>', 'agent-policy.yml: embed allow/ask/deny per operation for this agent')
-  .action(async (schema: string, opts: { target: string; server: string; out: string; agentPolicy?: string }) => {
+  .option('--system <name>', "key in the policy's systems map (default: the --server value)")
+  .action(async (schema: string, opts: { target: string; server: string; out: string; agentPolicy?: string; system?: string }) => {
     try {
       if (opts.target !== 'claude-code') {
         console.error(pc.red(`\n❌ Unknown --target '${opts.target}'. Supported: claude-code`));
@@ -281,9 +282,11 @@ hooks
         }
       }
       const agent = await AgentReady.fromFile(path.resolve(process.cwd(), schema));
-      const sys = policy?.systems?.[opts.server];
-      const execUpTo = sys?.execute_up_to ?? policy?.autonomy.execute_up_to;
-      const askUpTo = sys?.ask_up_to ?? policy?.autonomy.ask_up_to;
+      const system = opts.system ?? opts.server;
+      const systemKeys = Object.keys(policy?.systems ?? {});
+      if (policy && systemKeys.length > 0 && !Object.hasOwn(policy.systems ?? {}, system)) {
+        console.error(pc.yellow(`⚠ policy systems [${systemKeys.join(', ')}] has no entry for system '${system}'; using the global autonomy. Use --system <name> to pick one.`));
+      }
       const ops: HookOp[] = agent.allOperations.map((o: any) => {
         const op: HookOp = {
           name: o.name,
@@ -294,10 +297,9 @@ hooks
             `Operation ${o.name} requires confirmation`,
         };
         if (policy) {
-          op.decision = resolveAutonomy(policy, { system: opts.server, operation: o.name, risk_level: o.risk_level as RiskLevel });
-          op.policy_reason = op.decision === 'deny'
-            ? `agent policy ${policy.name} does not allow ${o.name} (${o.risk_level}); it executes up to ${execUpTo} and asks up to ${askUpTo}`
-            : `agent policy ${policy.name} asks a human before ${o.name} (${o.risk_level}); it executes up to ${execUpTo}`;
+          const verdict = explainAutonomy(policy, { system, operation: o.name, risk_level: o.risk_level as RiskLevel });
+          op.decision = verdict.decision;
+          op.policy_reason = verdict.reason;
         }
         return op;
       });
