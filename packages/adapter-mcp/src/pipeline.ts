@@ -14,6 +14,7 @@ export type AuditDecision =
   | 'pending'
   | 'confirmed'
   | 'declined'
+  | 'denied'
   | 'error';
 
 /** One decision record per runOperation call. */
@@ -52,6 +53,13 @@ export interface RunOperationOptions {
   onAudit?: AuditSink;
   /** Resolvers that evaluate state_guards; a guard whose predicate is absent here is not enforced. */
   resolvers?: AdapterResolvers;
+  /**
+   * Operator-side ceiling for the calling agent, resolved per call. `deny` returns a `denied` signpost before validation;
+   * `ask` takes the human-confirmation path; `allow` changes nothing. Absent: current behaviour.
+   */
+  autonomy?: (op: OperationHandle) => 'allow' | 'ask' | 'deny';
+  /** Name of the agent profile behind `autonomy`; used only in the denial reason. */
+  agent?: () => string | undefined;
 }
 
 /** True when a guard has a resolver, in the options or in the operation's own adapter. */
@@ -261,6 +269,19 @@ async function decide(
     decision,
     input,
   });
+  const verdict = options.autonomy?.(op);
+  if (verdict === 'deny') {
+    const profile = options.agent?.() || 'unnamed';
+    return outcome(
+      toMcpResult(
+        op.signpost('denied', {
+          reason: `agent policy ${profile} does not allow ${op.definition.name} (${op.definition.risk_level})`,
+        }),
+        false,
+      ),
+      'denied',
+    );
+  }
   const validation = op.validate(input, context);
 
   if (!validation.valid) {
@@ -303,7 +324,8 @@ async function decide(
 
   let confirmed = false;
   // invariant: confirmation is asked through MCP elicitation only when the client advertises it; otherwise the call returns pending.
-  if (validation.needsHumanConfirmation) {
+  // invariant: the agent ceiling can add a human check ('ask') but never remove one the system requires ('allow' is a no-op).
+  if (validation.needsHumanConfirmation || verdict === 'ask') {
     const answer = await askHuman(op, input, options.server);
     if (answer === 'unavailable') {
       return outcome(toMcpResult(op.signpost('pending', input), false), 'pending');

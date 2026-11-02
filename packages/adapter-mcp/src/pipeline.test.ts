@@ -3,6 +3,8 @@ import { OperationHandle, noopAdapter, createAdapter } from '@agent-ready/core';
 import type { Operation } from '@agent-ready/core';
 import { runOperation } from './pipeline.js';
 import type { AuditEvent } from './pipeline.js';
+import { registerArsTools } from './index.js';
+import { AgentReady } from '@agent-ready/core';
 
 const validatedOp = new OperationHandle(
   {
@@ -605,5 +607,106 @@ describe('runOperation - ExecutorContext', () => {
     const executor = vi.fn().mockResolvedValue({});
     await runOperation(op('confirmation', { human_confirmation: { message_template: 'ok?' } }), executor, { n: 1 }, {}, { server: accept() });
     expect(executor.mock.calls[0][1]).toEqual({ decision: 'confirmed', risk_level: 'confirmation' });
+  });
+});
+
+describe('runOperation - agent autonomy', () => {
+  const op = (risk: Operation['risk_level'], extra: Partial<Operation> = {}) =>
+    new OperationHandle(
+      {
+        id: 'OP-AU-01',
+        name: 'op_autonomia',
+        risk_level: risk,
+        input_schema: { n: { type: 'int', required: true } },
+        ...extra,
+      } satisfies Operation,
+      noopAdapter(),
+    );
+  const elicit = (answer: any) => ({
+    server: {
+      getClientCapabilities: () => ({ elicitation: {} }),
+      elicitInput: vi.fn().mockResolvedValue(answer),
+    },
+  });
+  const accept = { action: 'accept', content: { confirm: true } };
+
+  it('autonomy deny returns denied signpost before validation and never executes', async () => {
+    const executor = vi.fn();
+    const events: AuditEvent[] = [];
+    const result = await runOperation(
+      op('validated'),
+      executor,
+      {},
+      {},
+      { autonomy: () => 'deny', agent: () => 'strict', onAudit: (e) => events.push(e) },
+    );
+    expect(executor).not.toHaveBeenCalled();
+    expect((result.structuredContent as any).type).toBe('denied');
+    expect((result.structuredContent as any).reason).toBe('agent policy strict does not allow op_autonomia (validated)');
+    expect(events).toHaveLength(1);
+    expect(events[0].decision).toBe('denied');
+    expect(events[0].risk_level).toBe('validated');
+  });
+
+  it('autonomy ask reuses the human confirmation path', async () => {
+    const executor = vi.fn().mockResolvedValue({});
+    const events: AuditEvent[] = [];
+    const onAudit = (e: AuditEvent) => events.push(e);
+
+    await runOperation(op('validated'), executor, { n: 1 }, {}, { autonomy: () => 'ask', server: elicit(accept), onAudit });
+    expect(executor).toHaveBeenCalledTimes(1);
+    expect(executor.mock.calls[0][1]).toEqual({ decision: 'confirmed', risk_level: 'validated' });
+    expect(events[0].decision).toBe('confirmed');
+
+    const declined = vi.fn();
+    await runOperation(op('validated'), declined, { n: 1 }, {}, { autonomy: () => 'ask', server: elicit({ action: 'decline' }), onAudit });
+    expect(declined).not.toHaveBeenCalled();
+    expect(events[1].decision).toBe('declined');
+
+    const none = vi.fn();
+    const result = await runOperation(op('validated'), none, { n: 1 }, {}, { autonomy: () => 'ask', onAudit });
+    expect(none).not.toHaveBeenCalled();
+    expect((result.structuredContent as any).type).toBe('pending');
+    expect(events[2].decision).toBe('pending');
+  });
+
+  it('autonomy allow never lowers what the system requires', async () => {
+    const executor = vi.fn();
+    const result = await runOperation(op('confirmation'), executor, { n: 1 }, {}, { autonomy: () => 'allow' });
+    expect((result.structuredContent as any).type).toBe('pending');
+    expect(executor).not.toHaveBeenCalled();
+
+    const triggered = op('validated', {
+      input_schema: { n: { type: 'int', required: true, human_confirmation_if: { gt: 5 } } },
+    });
+    const triggeredExec = vi.fn();
+    const pending = await runOperation(triggered, triggeredExec, { n: 10 }, {}, { autonomy: () => 'allow' });
+    expect((pending.structuredContent as any).type).toBe('pending');
+    expect(triggeredExec).not.toHaveBeenCalled();
+
+    const plain = vi.fn().mockResolvedValue({});
+    await runOperation(op('validated'), plain, { n: 1 }, {}, { autonomy: () => 'allow' });
+    expect(plain.mock.calls[0][1]).toEqual({ decision: 'executed', risk_level: 'validated' });
+  });
+
+  it('registerArsTools forwards autonomy and agent', async () => {
+    const agent = AgentReady.fromYAML(`
+schema_version: "0.1"
+module: m
+operations:
+  - id: OP-1
+    name: registrar
+    risk_level: validated
+    input_schema:
+      valor: { type: decimal, required: true }
+`);
+    const server = { registerTool: vi.fn() };
+    const executor = vi.fn();
+    registerArsTools(server as any, agent, { registrar: executor }, { autonomy: () => 'deny', agent: () => 'bot9' });
+    const [, , handler] = server.registerTool.mock.calls.find((c) => c[0] === 'registrar')!;
+    const result = await handler({ valor: 5 });
+    expect(result.structuredContent.type).toBe('denied');
+    expect(result.structuredContent.reason).toContain('bot9');
+    expect(executor).not.toHaveBeenCalled();
   });
 });

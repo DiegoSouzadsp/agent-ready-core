@@ -4,7 +4,7 @@ import { OperationHandle, createAdapter, FK_PREDICATE } from '@agent-ready/core'
 import type { AdapterResolvers, AgentReady } from '@agent-ready/core';
 import { operationInputSchema, operationToolDescription, operationToolAnnotations } from './schema.js';
 import { runOperation, guardEnforced } from './pipeline.js';
-import type { AuditSink, ElicitationHost } from './pipeline.js';
+import type { AuditSink, ElicitationHost, RunOperationOptions } from './pipeline.js';
 import type { ExecutorMap, McpToolResult } from './types.js';
 
 export type { ExecutorFn, ExecutorMap, ExecutorContext, McpToolResult } from './types.js';
@@ -46,6 +46,10 @@ export interface RegisterArsToolsOptions {
   resolvers?: AdapterResolvers;
   /** Receives one AuditEvent per tool call. Without it, ARS_AUDIT=stderr writes JSON lines to stderr; otherwise nothing is recorded. */
   onAudit?: AuditSink;
+  /** Operator-side ceiling for the calling agent, forwarded to runOperation on every call. */
+  autonomy?: RunOperationOptions['autonomy'];
+  /** Profile name behind `autonomy`, used in the denial reason. */
+  agent?: RunOperationOptions['agent'];
 }
 
 function unenforcedGuardCount(op: OperationHandle, resolvers: AdapterResolvers | undefined): number {
@@ -87,7 +91,13 @@ export function registerArsTools(
         executors[opDef.name],
         input,
         options.context ?? {},
-        { resolvers, onAudit: options.onAudit, server: server as unknown as ElicitationHost },
+        {
+          resolvers,
+          onAudit: options.onAudit,
+          server: server as unknown as ElicitationHost,
+          autonomy: options.autonomy,
+          agent: options.agent,
+        },
       );
 
     // The SDK's `registerTool` infers the handler's arg type from `inputSchema` via
