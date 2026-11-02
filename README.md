@@ -122,10 +122,10 @@ Wrote .claude/ars/settings.snippet.json
 Merge settings.snippet.json into .claude/settings.json (format: https://code.claude.com/docs/en/hooks)
 
 $ echo '{"tool_name":"mcp__support-tickets__delete_ticket","tool_input":{"ticket_id":1}}' | node .claude/ars/ars-pretooluse.mjs
-{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"agent policy support-bot does not allow delete_ticket (confirmation); it executes up to validated and asks up to contextual"}}
+{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"agent policy support-bot denies delete_ticket explicitly"}}
 ```
 
-With `--agent-policy`, the same script answers `allow` for `create_ticket` and `ask` for `close_ticket`. Without the flag the hook behaves as described above.
+With `--agent-policy`, the same script answers `allow` for `create_ticket` and `ask` for `close_ticket` ("agent policy support-bot does not allow close_ticket (contextual); it executes up to validated and asks up to contextual"). The `systems` key defaults to `--server`; `--system <name>` picks another. Without the flag the hook behaves as described above.
 
 `ars agent init [dir] [--force]` writes `<dir>/agent-policy.yml` (validated before it is written) and refuses to overwrite without `--force`.
 
@@ -203,10 +203,10 @@ This is the file `ars agent init` writes. For one operation, the decision is the
 3. the risk is at or below `ask_up_to`: `ask`;
 4. otherwise `deny`.
 
-With no policy nothing changes: execute up to `contextual`, ask at `confirmation`.
+If `systems` has keys and none matches, the hook and the gateway warn on stderr and use the global `autonomy`. With no policy nothing changes: execute up to `contextual`, ask at `confirmation`.
 
-- **Hook.** `ars hooks export <schema> --target claude-code --server <name> --agent-policy <file>` resolves the policy per operation and embeds the result in the generated script: `allow`, `ask` or `deny` (the deny reason names the policy and its ceilings). `system` is the value of `--server`. The hook cannot see field-level confirmation triggers (`human_confirmation_if`), because it does not evaluate the tool input against the schema; the gateway can.
-- **Gateway.** `ars-gateway --plugin <dir> --token <t>=<profile> --agent-policy <file|dir>` (both repeatable), or `ARS_GATEWAY_TOKENS=a=bot1,b`, or `policies/*.yml` in the plugin directory. The profile is a policy's `name`, chosen by the Bearer token of each request. `system` is the plugin name. Before validation, `deny` returns a `denied` signpost and an audit event with `decision: 'denied'`, and the system is never called; `ask` goes through elicitation or returns `pending`. The profile reaches the system in `X-ARS-Agent`, inside the signed string. Details in [`packages/gateway`](packages/gateway/README.md).
+- **Hook.** `ars hooks export <schema> --target claude-code --server <name> --agent-policy <file>` resolves the policy per operation and embeds the result in the generated script: `allow`, `ask` or `deny` (the deny reason names the policy and its ceilings). `system`, the key looked up in `systems`, is `--system <name>` and defaults to `--server` (which is otherwise only the `mcp__<server>__` prefix). The hook cannot see field-level confirmation triggers (`human_confirmation_if`), because it does not evaluate the tool input against the schema; the gateway can.
+- **Gateway.** `ars-gateway --plugin <dir> --token <t>@<profile> --agent-policy <file|dir>` (both repeatable), or `ARS_GATEWAY_TOKENS=a@bot1,b`, or `policies/*.yml` in the plugin directory. The profile is a policy's `name`, chosen by the Bearer token of each request. `system` is the plugin name. The profile is split from the token at the last `@`, when the suffix matches `[A-Za-z0-9_.-]+`; an invalid suffix fails the start, and `=` is not special. Before validation, `deny` returns a `denied` signpost and an audit event with `decision: 'denied'`, and the system is never called; `ask` goes through elicitation or returns `pending`. The profile reaches the system in `X-ARS-Agent`, inside the signed string. Details in [`packages/gateway`](packages/gateway/README.md).
 - **Invariant: `allow` never lowers what the system requires.** A `confirmation` operation still needs a human when the policy says `allow` (the decision becomes `ask`), and the schema's own triggers still fire. An agent policy can add a check or a refusal; it cannot remove one.
 
 Example for the quickstart server: [`examples/quickstart/agent-policy.yml`](examples/quickstart/agent-policy.yml). The format is specified in [the spec](docs/spec/agent-ready-schema-v0.1.md).
@@ -215,7 +215,7 @@ Example for the quickstart server: [`examples/quickstart/agent-policy.yml`](exam
 
 Two things make the gateway usable as the only way in. Both are in [`packages/gateway`](packages/gateway/README.md).
 
-- **Inbound auth.** Configure `inboundTokens`, `ars-gateway --token <t>` (repeatable) or `ARS_GATEWAY_TOKENS=a,b`. A request to `/mcp` without a valid Bearer token gets 401 before any session exists; `/healthz` stays public and returns only `{"status":"ok"}`. The default host is `127.0.0.1`. With no tokens the gateway prints a warning on stderr, trusts `X-Acting-User`, and refuses to listen beyond loopback unless you pass `--insecure-no-auth` (`allowInsecureNoAuth: true`). A `--token` with no value is an error. A token can carry an agent profile, `--token <t>=<profile>` (or `ARS_GATEWAY_TOKENS=a=bot1,b`); see "Two-sided governance".
+- **Inbound auth.** Configure `inboundTokens`, `ars-gateway --token <t>` (repeatable) or `ARS_GATEWAY_TOKENS=a,b`. A request to `/mcp` without a valid Bearer token gets 401 before any session exists; `/healthz` stays public and returns only `{"status":"ok"}`. The default host is `127.0.0.1`. With no tokens the gateway prints a warning on stderr, trusts `X-Acting-User`, and refuses to listen beyond loopback unless you pass `--insecure-no-auth` (`allowInsecureNoAuth: true`). A `--token` with no value is an error. A token can carry an agent profile, `--token <t>@<profile>` (or `ARS_GATEWAY_TOKENS=a@bot1,b`); see "Two-sided governance".
 - **Proof of governance.** With `auth.signing_secret` in `plugin.yml` (`${ENV}` is accepted; a declared secret that resolves to empty fails at load), every request the gateway sends to the system carries `X-ARS-Timestamp`, `X-ARS-Nonce`, `X-ARS-Operation`, `X-ARS-Risk`, `X-ARS-Decision` (`executed` or `confirmed`), `X-ARS-Agent` (the token's profile, empty when it has none) and `X-ARS-Signature` (`v1=<hex>`, HMAC-SHA256 over `timestamp \n nonce \n METHOD \n path+query \n sha256(body) \n operation \n risk \n decision \n acting_user \n agent`). The system verifies it with `verifyArsSignature`:
 
 ```ts
@@ -229,7 +229,7 @@ app.use((req, res, next) => {
 });
 ```
 
-The system then accepts only calls that went through the governance: anything without a valid signature, including a direct call that skips the gateway, is rejected by the system itself. The default skew is 120 s.
+The system then accepts only calls that went through the governance: anything without a valid signature, including a direct call that skips the gateway, is rejected by the system itself. The default skew is 120 s. The v1 signed string was finalized before the first npm publish; strings from earlier commits differ.
 
 **Replay.** A valid signature stays valid for the whole skew window, so the system must remember the nonces it has seen inside it and serve over TLS:
 
@@ -295,7 +295,7 @@ There is no text-based resume: a "CONFIRMAR" reply is not a protocol and the pac
 | `packages/adapter-mcp` | Bridges an ARS schema to MCP tools, running the governance pipeline on each call (validation, state guards through `resolvers`, elicitation, audit through `onAudit`) |
 | `packages/adapter-sqlite` | Resolves state-guard predicates against SQLite |
 | `packages/adapter-rest` | Resolves predicates via HTTP |
-| `packages/gateway` | `@agent-ready/gateway`: generic ARS gateway engine. Loads a declarative plugin directory (ARS schemas plus an HTTP executor mapping) and serves it as MCP tools over Streamable HTTP, with no per-system code. Takes `resolvers` and `onAudit` as options; audit goes to stderr by default. CLI: `ars-gateway --plugin <dir> [--port 8808] [--token <t>]...`. Inbound Bearer tokens (`--token`, `ARS_GATEWAY_TOKENS`, `inboundTokens`) and request signing for the target system (`signing_secret` in `plugin.yml`, verified with `verifyArsSignature`) |
+| `packages/gateway` | `@agent-ready/gateway`: generic ARS gateway engine. Loads a declarative plugin directory (ARS schemas plus an HTTP executor mapping) and serves it as MCP tools over Streamable HTTP, with no per-system code. Takes `resolvers` and `onAudit` as options; audit goes to stderr by default. CLI: `ars-gateway --plugin <dir> [--port 8808] [--token <t>[@<profile>]]... [--agent-policy <file|dir>]...`. Inbound Bearer tokens (`--token`, `ARS_GATEWAY_TOKENS`, `inboundTokens`) and request signing for the target system (`signing_secret` in `plugin.yml`, verified with `verifyArsSignature`) |
 
 `apps/docs` (Astro Starlight site) and `apps/playground` (Svelte schema editor) are early-stage.
 

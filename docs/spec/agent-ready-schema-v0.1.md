@@ -270,7 +270,7 @@ autonomy:                          # required
   execute_up_to: RiskLevel         # free | validated | contextual (never confirmation)
   ask_up_to: RiskLevel             # free | validated | contextual | confirmation
 systems:                           # optional: exceptions per system
-  <system>:                        # MCP server name (hook) or plugin name (gateway)
+  <system>:                        # hook: --system (default --server); gateway: plugin name
     execute_up_to: RiskLevel       # optional, overrides autonomy for this system
     ask_up_to: RiskLevel           # optional, overrides autonomy for this system
     operations:                    # optional
@@ -286,11 +286,11 @@ systems:                           # optional: exceptions per system
 3. `R` at or below `ask_up_to` (same precedence): `ask`.
 4. Otherwise `deny`.
 
-Without a policy, the decision is the one the schema alone gives: execute up to `contextual`, ask at `confirmation`.
+If `systems` has keys and none matches `S`, an implementation SHOULD warn and use `autonomy`. Without a policy, the decision is the one the schema alone gives: execute up to `contextual`, ask at `confirmation`.
 
 **Enforcement.** The decision is taken before the checks in "How the schema is consumed", which are all still applied. `deny` returns a signpost of type `denied` and no executor is reached; `ask` takes the same path as a human confirmation; `allow` proceeds. An agent policy can only add a human check or a refusal: it never removes a requirement of the schema, such as `risk_level: confirmation`, `human_confirmation` or a field-level trigger. A client-side hook can apply the decision only per operation, because it does not see which fields trigger confirmation; a runtime or gateway applies it together with the schema.
 
-**Identity.** A gateway that serves several agents associates each credential with a policy `name` and passes it to the system in the `X-ARS-Agent` header (empty when the credential has none), covered by the request signature.
+**Identity.** A gateway that serves several agents associates each credential (`--token <t>@<profile>`) with a policy `name` and passes it to the system in the `X-ARS-Agent` header (empty when the credential has none), covered by the request signature.
 
 ---
 

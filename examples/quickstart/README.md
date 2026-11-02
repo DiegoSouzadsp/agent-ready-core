@@ -89,9 +89,9 @@ Merge `.claude/ars/settings.snippet.json` into `.claude/settings.json` and regis
 
 1. "List open tickets." runs without a prompt (as without the policy).
 2. "Create a ticket without a title." is allowed, and the validation error comes back as before. (`create_ticket` is `validated`, within `execute_up_to`.)
-3. "Delete ticket 1." is refused by the hook before the server is called, with the reason "agent policy support-bot does not allow delete_ticket (confirmation)". Without the policy it would ask a human.
+3. "Delete ticket 1." is refused by the hook before the server is called, with the reason "agent policy support-bot denies delete_ticket explicitly". Without the policy it would ask a human.
 
-"Assign ticket 3 to agent 10" now makes the hook ask a human before the server runs. The hook does not evaluate field-level triggers such as the refund above 100, which only the server-side pipeline sees. Policies also work in the gateway, one profile per token: see the root README, "Two-sided governance".
+"Assign ticket 3 to agent 10" now makes the hook ask a human before the server runs. The hook does not evaluate field-level triggers such as the refund above 100, which only the server-side pipeline sees. The key under `systems` in `agent-policy.yml` is `support-tickets`; the hook takes it from `--server`, or from `--system <name>` when it differs from the server name. If `systems` has keys and none matches, the hook and the gateway warn on stderr and use the global `autonomy`. Policies also work in the gateway, one profile per token (`--token <t>@support-bot`, with the plugin name as the key): see the root README, "Two-sided governance".
 
 ## Sanity check
 
