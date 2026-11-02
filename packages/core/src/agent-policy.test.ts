@@ -6,6 +6,7 @@ import {
   loadAgentPolicy,
   loadAgentPolicyFromFile,
   resolveAutonomy,
+  explainAutonomy,
   type AgentPolicy,
   type AgentDecision,
 } from './agent-policy.js';
@@ -110,6 +111,11 @@ describe('loadAgentPolicy', () => {
     }
   });
 
+  it('systems null is rejected and systems empty is accepted', () => {
+    expect(() => loadAgentPolicy(policyYaml({ systems: 'systems: null' }))).toThrow(/systems must be a map/);
+    expect(loadAgentPolicy(policyYaml({ systems: 'systems: {}' })).systems).toEqual({});
+  });
+
   it('file loader reads a file and names a missing path', () => {
     const dir = mkdtempSync(join(tmpdir(), 'ars-agent-policy-'));
     const file = join(dir, 'agent-policy.yml');
@@ -202,6 +208,57 @@ describe('resolveAutonomy', () => {
     const askOnly = policy('free', 'free', { systems: { s: { ask_up_to: 'contextual' } } });
     expect(resolveAutonomy(askOnly, { system: 's', operation: 'op', risk_level: 'contextual' })).toBe('ask');
     expect(resolveAutonomy(askOnly, { system: 't', operation: 'op', risk_level: 'contextual' })).toBe('deny');
+  });
+
+  it('explainAutonomy names the rule and the text for every rule', () => {
+    const p = policy('validated', 'contextual', {
+      systems: {
+        s: { execute_up_to: 'contextual', operations: { del: 'deny', ask1: 'ask', ok: 'allow' } },
+        conf: { operations: { wipe: 'allow' } },
+      },
+    });
+    const op = explainAutonomy(p, { system: 's', operation: 'del', risk_level: 'free' });
+    expect(op).toEqual({ decision: 'deny', rule: 'operation', reason: 'agent policy bot denies del explicitly' });
+    expect(explainAutonomy(p, { system: 's', operation: 'ok', risk_level: 'contextual' }).reason)
+      .toBe('agent policy bot allows ok explicitly');
+    expect(explainAutonomy(p, { system: 's', operation: 'ask1', risk_level: 'free' }))
+      .toMatchObject({ decision: 'ask', rule: 'operation' });
+
+    const sys = explainAutonomy(p, { system: 's', operation: 'x', risk_level: 'confirmation' });
+    expect(sys).toEqual({
+      decision: 'deny',
+      rule: 'system',
+      reason: 'agent policy bot does not allow x (confirmation); it executes up to contextual and asks up to contextual',
+    });
+
+    const base = explainAutonomy(p, { system: 'other', operation: 'x', risk_level: 'contextual' });
+    expect(base).toEqual({
+      decision: 'ask',
+      rule: 'base',
+      reason: 'agent policy bot does not allow x (contextual); it executes up to validated and asks up to contextual',
+    });
+
+    const conf = explainAutonomy(p, { system: 'conf', operation: 'wipe', risk_level: 'confirmation' });
+    expect(conf).toEqual({
+      decision: 'ask',
+      rule: 'confirmation',
+      reason: 'operation wipe requires human confirmation; agent policy bot cannot grant it',
+    });
+
+    expect(explainAutonomy(undefined, { operation: 'x', risk_level: 'confirmation' })).toEqual({
+      decision: 'ask',
+      rule: 'default',
+      reason: 'no agent policy; default ceiling',
+    });
+  });
+
+  it('resolveAutonomy is the decision of explainAutonomy', () => {
+    for (const [exec, ask] of PAIRS) {
+      for (const risk of RISKS) {
+        const q = { operation: 'op', risk_level: risk };
+        expect(resolveAutonomy(policy(exec, ask), q)).toBe(explainAutonomy(policy(exec, ask), q).decision);
+      }
+    }
   });
 
   it('no policy keeps today behaviour', () => {

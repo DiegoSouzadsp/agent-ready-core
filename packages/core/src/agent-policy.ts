@@ -167,29 +167,68 @@ export function loadAgentPolicyFromFile(path: string): AgentPolicy {
   return loadAgentPolicy(content);
 }
 
+export type AutonomyRule = 'operation' | 'system' | 'base' | 'confirmation' | 'default';
+
+export interface AutonomyExplanation {
+  decision: AgentDecision;
+  reason: string;
+  rule: AutonomyRule;
+}
+
+const EXCEPTION_VERB: Record<AgentDecision, string> = { allow: 'allows', ask: 'asks about', deny: 'denies' };
+
 /**
- * Decide what the agent may do with an operation of the given risk.
+ * why: single source of the decision text, so hook and gateway never word it twice.
  * Order: per-operation exception, execute ceiling, ask ceiling, deny.
  */
-export function resolveAutonomy(
+export function explainAutonomy(
   policy: AgentPolicy | undefined,
   q: { system?: string; operation: string; risk_level: RiskLevel },
-): AgentDecision {
+): AutonomyExplanation {
   const systems = policy?.systems ?? {};
   const sys = q.system !== undefined && Object.hasOwn(systems, q.system) ? systems[q.system] : undefined;
 
   const ops = sys?.operations;
-  if (ops && Object.hasOwn(ops, q.operation)) {
+  if (policy && ops && Object.hasOwn(ops, q.operation)) {
     const exception = ops[q.operation];
     // invariant: confirmation never executes without a human, whatever the exception says
-    return exception === 'allow' && q.risk_level === 'confirmation' ? 'ask' : exception;
+    if (exception === 'allow' && q.risk_level === 'confirmation') {
+      return {
+        decision: 'ask',
+        rule: 'confirmation',
+        reason: `operation ${q.operation} requires human confirmation; agent policy ${policy.name} cannot grant it`,
+      };
+    }
+    return {
+      decision: exception,
+      rule: 'operation',
+      reason: `agent policy ${policy.name} ${EXCEPTION_VERB[exception]} ${q.operation} explicitly`,
+    };
   }
 
   const base = policy?.autonomy ?? DEFAULT_AUTONOMY;
   const execUpTo = sys?.execute_up_to ?? base.execute_up_to;
   const askUpTo = sys?.ask_up_to ?? base.ask_up_to;
 
-  if (q.risk_level !== 'confirmation' && compareRisk(q.risk_level, execUpTo) <= 0) return 'allow';
-  if (compareRisk(q.risk_level, askUpTo) <= 0) return 'ask';
-  return 'deny';
+  let decision: AgentDecision = 'deny';
+  if (q.risk_level !== 'confirmation' && compareRisk(q.risk_level, execUpTo) <= 0) decision = 'allow';
+  else if (compareRisk(q.risk_level, askUpTo) <= 0) decision = 'ask';
+
+  if (!policy) {
+    return { decision, rule: 'default', reason: 'no agent policy; default ceiling' };
+  }
+  const fromSystem = sys?.execute_up_to !== undefined || sys?.ask_up_to !== undefined;
+  const verb = decision === 'allow' ? 'allows' : 'does not allow';
+  return {
+    decision,
+    rule: fromSystem ? 'system' : 'base',
+    reason: `agent policy ${policy.name} ${verb} ${q.operation} (${q.risk_level}); it executes up to ${execUpTo} and asks up to ${askUpTo}`,
+  };
+}
+
+export function resolveAutonomy(
+  policy: AgentPolicy | undefined,
+  q: { system?: string; operation: string; risk_level: RiskLevel },
+): AgentDecision {
+  return explainAutonomy(policy, q).decision;
 }

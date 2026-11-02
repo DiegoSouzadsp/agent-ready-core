@@ -178,6 +178,14 @@ describe('generateSignpost', () => {
       expect(sp.next).toEqual([]);
     });
 
+    it('denied signpost defaults name the operation and teach', () => {
+      const sp = generateSignpost(op, 'denied', {});
+      expect(sp.reason).toContain('registrar_gasto');
+      expect(sp.what_to_do).toContain('agent policy');
+      expect(sp.next).toEqual([]);
+      expect(sp.guidance).toContain(sp.reason as string);
+    });
+
     it('denied signpost keeps what_to_do and next when given', () => {
       const sp = generateSignpost(op, 'denied', { reason: 'r', what_to_do: 'ask the operator', next: ['consulta_mes'] });
       expect(sp.what_to_do).toBe('ask the operator');
