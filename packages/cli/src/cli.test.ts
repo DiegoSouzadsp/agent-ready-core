@@ -404,3 +404,53 @@ describe('init --from-openapi', () => {
     }
   });
 });
+
+describe('init --from-openapi edge cases', () => {
+  const mkTmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'ars-oai-'));
+
+  it('terminates on a cyclic $ref, warns, and emits valid YAML without $ref', async () => {
+    const dir = mkTmp();
+    const src = path.join(dir, 'cyclic.yaml');
+    fs.writeFileSync(src, [
+      'openapi: 3.0.0',
+      'info: {title: cyc}',
+      'paths:',
+      '  /a:',
+      '    post:',
+      '      operationId: makeA',
+      '      requestBody:',
+      '        content:',
+      '          application/json:',
+      '            schema:',
+      '              type: object',
+      '              properties:',
+      '                loop: {$ref: "#/components/schemas/A"}',
+      '                ok: {type: string}',
+      'components:',
+      '  schemas:',
+      '    A: {$ref: "#/components/schemas/A"}',
+      '',
+    ].join('\n'));
+    const out = path.join(dir, 'out');
+    const r = await runCli(`init --from-openapi "${src}" "${out}"`);
+    expect(r.code).toBe(0);
+    expect(r.stderr).toContain('too deep or cyclic');
+    const text = fs.readFileSync(path.join(out, 'agent-ready.yml'), 'utf8');
+    expect(text).not.toContain('$ref');
+    expect((await runCli(`validate "${path.join(out, 'agent-ready.yml')}"`)).code).toBe(0);
+  });
+
+  it('rejects a document without paths and writes nothing', async () => {
+    const dir = mkTmp();
+    const src = path.join(dir, 'nopaths.yaml');
+    fs.writeFileSync(src, 'openapi: 3.0.0\ninfo: {title: x}\n');
+    const { convertOpenApi, OpenApiImportError } = await import('./openapi-init.js');
+    expect(() => convertOpenApi({ openapi: '3.0.0', info: { title: 'x' } })).toThrow(OpenApiImportError);
+    expect(() => convertOpenApi({ openapi: '3.0.0', info: { title: 'x' } })).toThrow(/no operations found/);
+    const out = path.join(dir, 'out');
+    const r = await runCli(`init --from-openapi "${src}" "${out}"`);
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain('no operations found');
+    expect(fs.existsSync(path.join(out, 'agent-ready.yml'))).toBe(false);
+  });
+});
