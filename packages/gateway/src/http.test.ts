@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { fileURLToPath } from 'node:url';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { startGatewayHttp } from './http.js';
+import { verifyArsSignature } from './signature.js';
 import type { RunningGateway } from './http.js';
 
 const REFERENCE_DIR = fileURLToPath(new URL('../plugins/_reference', import.meta.url));
@@ -352,6 +353,47 @@ describe('startGatewayHttp — inbound auth', () => {
     } finally {
       stderr.mockRestore();
       for (const g of open) await new Promise<void>((r) => g.httpServer.close(() => r()));
+    }
+  });
+});
+
+describe('startGatewayHttp — signed outbound requests', () => {
+  it('end to end signed requests carry executed and confirmed decisions', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ars-signed-'));
+    await cp(REFERENCE_DIR, dir, { recursive: true });
+    await writeFile(
+      join(dir, 'plugin.yml'),
+      'plugin: reference\nsystem_base_url: ${REFERENCE_API_URL}\nauth:\n  service_token: ${REFERENCE_TOKEN}\n  signing_secret: e2e-secret\n',
+    );
+    const fetchMock = vi.fn(async () =>
+      new Response('{"id":1}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+    const gateway = await startGatewayHttp({
+      pluginDir: dir,
+      port: 0,
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      env: { REFERENCE_API_URL: 'http://fake-system.local', REFERENCE_TOKEN: 'svc-secret' },
+      onAudit: () => {},
+    });
+    const client = new Client({ name: 'sign-client', version: '0.0.1' }, { capabilities: { elicitation: {} } });
+    client.setRequestHandler(ElicitRequestSchema, (async () => ({ action: 'accept', content: { confirm: true } })) as never);
+    await client.connect(new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${gateway.port}/mcp`)));
+    try {
+      await client.callTool({ name: 'listar_itens', arguments: {} });
+      await client.callTool({ name: 'criar_item', arguments: { nome: 'Andaime', valor: 120 } });
+      const calls = fetchMock.mock.calls as unknown as Array<[string, { method: string; headers: Record<string, string>; body?: string }]>;
+      expect(calls).toHaveLength(2);
+      const [free, confirmed] = calls;
+      expect(free[1].headers['X-ARS-Decision']).toBe('executed');
+      expect(free[1].headers['X-ARS-Risk']).toBe('free');
+      expect(confirmed[1].headers['X-ARS-Decision']).toBe('confirmed');
+      for (const [url, init] of calls) {
+        expect(verifyArsSignature({ method: init.method, url, body: init.body, headers: init.headers }, 'e2e-secret').ok).toBe(true);
+      }
+    } finally {
+      await client.close();
+      await new Promise<void>((r) => gateway.httpServer.close(() => r()));
+      await rm(dir, { recursive: true, force: true });
     }
   });
 });

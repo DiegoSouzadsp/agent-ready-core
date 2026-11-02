@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { AgentReady } from '@agent-ready/core';
 import { renderTemplate, buildExecutor, buildExecutorMap } from './executors.js';
-import { signArsRequest } from './signature.js';
+import { signArsRequest, verifyArsSignature } from './signature.js';
 import type { LoadedPlugin, PluginManifest, ExecutorSpec } from './plugin.js';
 
 const MANIFEST: PluginManifest = {
@@ -251,6 +251,7 @@ describe('buildExecutor — X-ARS signing', () => {
       expect(init.headers['X-ARS-Decision']).toBe('executed');
       expect(init.headers['X-ARS-Signature']).toBe(expected(url, init, op, 'executed'));
       expect(init.headers['X-ARS-Signature']).toMatch(/^v1=[0-9a-f]{64}$/);
+      expect(verifyArsSignature({ method: init.method, url, body: init.body, headers: init.headers }, 'sig-secret')).toMatchObject({ ok: true, operation: op, decision: 'executed' });
     }
   });
 
@@ -260,7 +261,8 @@ describe('buildExecutor — X-ARS signing', () => {
     const [url, init] = sent(fetchImpl);
     expect(url).toContain('a%20b%2Fc');
     expect(init.headers['X-ARS-Signature']).toBe(expected(url, init, 'get_item', 'executed'));
-    expect(init.headers['X-ARS-Signature']).not.toBe(expected(url.replace('a%20b%2Fc', 'a b/c'), init, 'get_item', 'executed'));
+    expect(verifyArsSignature({ method: 'GET', url, headers: init.headers }, 'sig-secret').ok).toBe(true);
+    expect(verifyArsSignature({ method: 'GET', url: url.replace('a%20b%2Fc', 'a b/c'), headers: init.headers }, 'sig-secret').ok).toBe(false);
   });
 
   it('no X-ARS headers without secret or without context', async () => {
@@ -284,6 +286,7 @@ describe('buildExecutor — X-ARS signing', () => {
     expect(init.headers['X-ARS-Decision']).toBe('confirmed');
     expect(init.headers['X-ARS-Risk']).toBe('confirmation');
     expect(init.headers['X-ARS-Signature']).toBe(expected(url, init, 'del', 'confirmed'));
-    expect(init.headers['X-ARS-Signature']).not.toBe(expected(url, init, 'del', 'executed'));
+    const swapped = { ...init.headers, 'X-ARS-Decision': 'executed' };
+    expect(verifyArsSignature({ method: 'DELETE', url, headers: swapped }, 'sig-secret')).toEqual({ ok: false, reason: 'bad_signature' });
   });
 });
