@@ -137,21 +137,31 @@ In short: ARS does not compete with annotations or hooks. The MCP adapter alread
 
 Two things make the gateway usable as the only way in. Both are in [`packages/gateway`](packages/gateway/README.md).
 
-- **Inbound auth.** Configure `inboundTokens`, `ars-gateway --token <t>` (repeatable) or `ARS_GATEWAY_TOKENS=a,b`. A request to `/mcp` without a valid Bearer token gets 401 before any session exists; `/healthz` stays public. With no tokens configured the gateway still starts, prints a warning on stderr, and trusts `X-Acting-User`.
-- **Proof of governance.** With `auth.signing_secret` in `plugin.yml` (`${ENV}` is accepted), every request the gateway sends to the system carries `X-ARS-Timestamp`, `X-ARS-Operation`, `X-ARS-Risk`, `X-ARS-Decision` (`executed` or `confirmed`) and `X-ARS-Signature` (`v1=<hex>`, HMAC-SHA256 over timestamp, method, path and query, body hash, operation and decision). The system verifies it with `verifyArsSignature`:
+- **Inbound auth.** Configure `inboundTokens`, `ars-gateway --token <t>` (repeatable) or `ARS_GATEWAY_TOKENS=a,b`. A request to `/mcp` without a valid Bearer token gets 401 before any session exists; `/healthz` stays public and returns only `{"status":"ok"}`. The default host is `127.0.0.1`. With no tokens the gateway prints a warning on stderr, trusts `X-Acting-User`, and refuses to listen beyond loopback unless you pass `--insecure-no-auth` (`allowInsecureNoAuth: true`). A `--token` with no value is an error.
+- **Proof of governance.** With `auth.signing_secret` in `plugin.yml` (`${ENV}` is accepted; a declared secret that resolves to empty fails at load), every request the gateway sends to the system carries `X-ARS-Timestamp`, `X-ARS-Nonce`, `X-ARS-Operation`, `X-ARS-Risk`, `X-ARS-Decision` (`executed` or `confirmed`) and `X-ARS-Signature` (`v1=<hex>`, HMAC-SHA256 over `timestamp \n nonce \n METHOD \n path+query \n sha256(body) \n operation \n risk \n decision \n acting_user`). The system verifies it with `verifyArsSignature`:
 
 ```ts
 import { verifyArsSignature } from '@agent-ready/gateway';
 
-app.use(express.text({ type: '*/*' }));
+app.use(express.text({ type: '*/*' })); // raw body; a GET leaves req.body as {} and verifies as empty
 app.use((req, res, next) => {
   const v = verifyArsSignature({ method: req.method, url: req.originalUrl, body: req.body, headers: req.headers }, process.env.ARS_SIGNING_SECRET!);
   if (!v.ok) return res.status(401).json({ error: v.reason });
-  next(); // v.operation, v.risk, v.decision are available; require v.decision === 'confirmed' on destructive routes
+  next(); // v.operation, v.risk, v.decision, v.nonce, v.actingUser are available; require v.decision === 'confirmed' on destructive routes
 });
 ```
 
-The system then accepts only calls that went through the governance: anything without a valid signature, including a direct call that skips the gateway, is rejected by the system itself. Limits: a signature proves the call passed the gateway at that moment, a replay inside the skew window (5 minutes by default) is still possible so destructive handlers should be idempotent, and the gateway does not store or rotate the secret. Executors written in code receive `{ decision, risk_level }` as an optional second argument (`ExecutorContext`).
+The system then accepts only calls that went through the governance: anything without a valid signature, including a direct call that skips the gateway, is rejected by the system itself. The default skew is 120 s.
+
+**Replay.** A valid signature stays valid for the whole skew window, so the system must remember the nonces it has seen inside it and serve over TLS:
+
+```ts
+const seen = new Map<string, number>();
+const fresh = (nonce: string) => { const now = Date.now(); for (const [n, t] of seen) if (now - t > 240_000) seen.delete(n); return !seen.has(nonce) && !!seen.set(nonce, now); };
+// after verifyArsSignature: if (!fresh(v.nonce)) return res.status(401).json({ error: 'replay' });
+```
+
+The gateway does not store or rotate the secret. Executors written in code receive `{ decision, risk_level }` as an optional second argument (`ExecutorContext`).
 
 ## How confirmation works today
 
