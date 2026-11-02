@@ -6,6 +6,7 @@
  *   ars-gateway --plugin ./plugins/neorental [--port 8808] [--host 0.0.0.0]
  */
 import { startGatewayHttp } from './http.js';
+import { resolveInboundTokens } from './bin-args.js';
 
 function argValue(flag: string): string | undefined {
   const index = process.argv.indexOf(flag);
@@ -14,7 +15,7 @@ function argValue(flag: string): string | undefined {
 
 const pluginDir = argValue('--plugin');
 if (!pluginDir) {
-  console.error('Usage: ars-gateway --plugin <dir> [--port 8808] [--host 0.0.0.0]');
+  console.error('Usage: ars-gateway --plugin <dir> [--port 8808] [--host 0.0.0.0] [--token <t>]...');
   process.exit(1);
 }
 
@@ -22,6 +23,7 @@ startGatewayHttp({
   pluginDir,
   port: Number(argValue('--port') ?? 8808),
   host: argValue('--host'),
+  inboundTokens: resolveInboundTokens(process.argv, process.env),
 })
   .then(({ plugin, port }) => {
     console.log(

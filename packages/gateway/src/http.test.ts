@@ -227,3 +227,131 @@ describe('startGatewayHttp — state guards and audit', () => {
     await client.close();
   });
 });
+
+describe('startGatewayHttp — inbound auth', () => {
+  const ENV = { REFERENCE_API_URL: 'http://fake-system.local', REFERENCE_TOKEN: 'svc-secret' };
+  let gateway: RunningGateway;
+  let fetchMock: ReturnType<typeof vi.fn>;
+
+  beforeAll(async () => {
+    fetchMock = vi.fn(async () =>
+      new Response('{"items":[]}', { status: 200, headers: { 'Content-Type': 'application/json' } }),
+    );
+    gateway = await startGatewayHttp({
+      pluginDir: REFERENCE_DIR,
+      port: 0,
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      env: ENV,
+      inboundTokens: ['tok-a', 'tok-b'],
+    });
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => gateway.httpServer.close(() => resolve()));
+  });
+
+  const mcpUrl = () => `http://127.0.0.1:${gateway.port}/mcp`;
+  const initializeBody = JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'initialize',
+    params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 't', version: '0' } },
+  });
+  const post = (headers: Record<string, string>) =>
+    fetch(mcpUrl(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', ...headers },
+      body: initializeBody,
+    });
+
+  it('inbound auth rejects missing or wrong bearer with 401', async () => {
+    for (const headers of [{}, { Authorization: 'Bearer nope' }, { Authorization: 'Basic tok-a' }, { Authorization: 'Bearer ' }]) {
+      const res = await post(headers);
+      expect(res.status).toBe(401);
+      expect(res.headers.get('content-type')).toContain('application/json');
+      expect(await res.json()).toEqual({ error: 'unauthorized' });
+    }
+  });
+
+  it('unauthorized request creates no session and cannot reuse one', async () => {
+    const bad = await post({ Authorization: 'Bearer nope' });
+    expect(bad.headers.get('mcp-session-id')).toBeNull();
+
+    const ok = await post({ Authorization: 'Bearer tok-a' });
+    expect(ok.status).toBe(200);
+    const sessionId = ok.headers.get('mcp-session-id');
+    expect(sessionId).toBeTruthy();
+    const reuse = await fetch(mcpUrl(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', 'mcp-session-id': sessionId! },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list' }),
+    });
+    expect(reuse.status).toBe(401);
+  });
+
+  it('valid inbound token serves a full session', async () => {
+    const client = new Client({ name: 'auth-client', version: '0.0.1' });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(mcpUrl()), {
+        requestInit: { headers: { Authorization: 'Bearer tok-b' } },
+      }),
+    );
+    const { tools } = await client.listTools();
+    expect(tools.map((t) => t.name)).toContain('listar_itens');
+    const result = await client.callTool({ name: 'listar_itens', arguments: {} });
+    expect(result.isError ?? false).toBe(false);
+    await client.close();
+  });
+
+  it('healthz stays public with inbound auth on', async () => {
+    const res = await fetch(`http://127.0.0.1:${gateway.port}/healthz`);
+    expect(res.status).toBe(200);
+  });
+
+  it('acting user is only honored after inbound auth', async () => {
+    fetchMock.mockClear();
+    const denied = await post({ 'X-Acting-User': 'mallory' });
+    expect(denied.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    const client = new Client({ name: 'auth-client', version: '0.0.1' });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(mcpUrl()), {
+        requestInit: { headers: { Authorization: 'Bearer tok-a', 'X-Acting-User': 'alice' } },
+      }),
+    );
+    await client.callTool({ name: 'listar_itens', arguments: {} });
+    await client.close();
+    const init = fetchMock.mock.calls[0][1] as { headers: Record<string, string> };
+    expect(init.headers['X-Acting-User']).toBe('alice');
+  });
+
+  it('no inbound tokens warns once and leaves tool descriptions unchanged', async () => {
+    const descriptions = async (g: RunningGateway, headers: Record<string, string>) => {
+      const client = new Client({ name: 'desc-client', version: '0.0.1' });
+      await client.connect(
+        new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${g.port}/mcp`), { requestInit: { headers } }),
+      );
+      const { tools } = await client.listTools();
+      await client.close();
+      return tools.map((t) => [t.name, t.description]);
+    };
+    const withTokens = await descriptions(gateway, { Authorization: 'Bearer tok-a' });
+
+    const stderr = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const open: RunningGateway[] = [];
+    try {
+      for (const inboundTokens of [undefined, []] as const) {
+        stderr.mockClear();
+        const g = await startGatewayHttp({ pluginDir: REFERENCE_DIR, port: 0, env: ENV, inboundTokens: inboundTokens as string[] | undefined });
+        open.push(g);
+        const warned = stderr.mock.calls.filter((c) => String(c[0]).includes('inbound auth disabled; X-Acting-User is trusted'));
+        expect(warned).toHaveLength(1);
+        expect(await descriptions(g, {})).toEqual(withTokens);
+      }
+    } finally {
+      stderr.mockRestore();
+      for (const g of open) await new Promise<void>((r) => g.httpServer.close(() => r()));
+    }
+  });
+});

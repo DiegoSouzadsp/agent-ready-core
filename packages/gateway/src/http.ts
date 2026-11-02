@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createServer } from 'node:http';
 import type { IncomingMessage, Server, ServerResponse } from 'node:http';
@@ -24,6 +24,11 @@ export interface StartGatewayHttpOptions {
   env?: NodeJS.ProcessEnv;
   resolvers?: AdapterResolvers;
   onAudit?: AuditSink;
+  /**
+   * Bearer tokens the host must present on /mcp (host → gateway). Empty or absent disables
+   * inbound auth and X-Acting-User is trusted as sent. Distinct from the plugin's service_token (gateway → system).
+   */
+  inboundTokens?: string[];
 }
 
 export interface RunningGateway {
@@ -42,6 +47,22 @@ export interface RunningGateway {
 export async function startGatewayHttp(options: StartGatewayHttpOptions): Promise<RunningGateway> {
   const plugin = await loadPlugin(options.pluginDir, options.env ?? process.env);
   const inboundHeader = (options.actingUserHeader ?? 'x-acting-user').toLowerCase();
+
+  const tokenDigests = (options.inboundTokens ?? [])
+    .filter((token) => token !== '')
+    .map((token) => createHash('sha256').update(token).digest());
+  if (tokenDigests.length === 0) {
+    console.error('[ars-gateway] warning: inbound auth disabled; X-Acting-User is trusted');
+  }
+
+  // invariant: digests have equal length, so timingSafeEqual never throws and token length does not leak.
+  function isAuthorized(header: string | string[] | undefined): boolean {
+    const value = Array.isArray(header) ? header[0] : header;
+    const match = /^Bearer (.+)$/.exec(value ?? '');
+    if (!match) return false;
+    const candidate = createHash('sha256').update(match[1]).digest();
+    return tokenDigests.reduce((found, digest) => timingSafeEqual(digest, candidate) || found, false);
+  }
 
   const sessions = new Map<string, { transport: StreamableHTTPServerTransport; server: McpServer }>();
   const actingUserStore = new AsyncLocalStorage<string | undefined>();
@@ -81,6 +102,13 @@ export async function startGatewayHttp(options: StartGatewayHttpOptions): Promis
     if (url !== '/mcp') {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Not found. MCP endpoint is POST /mcp; health check is GET /healthz.' }));
+      return;
+    }
+
+    // why: auth runs before the acting user is read, a session is created or handleRequest is reached.
+    if (tokenDigests.length > 0 && !isAuthorized(req.headers.authorization)) {
+      res.writeHead(401, { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer' });
+      res.end(JSON.stringify({ error: 'unauthorized' }));
       return;
     }
 
