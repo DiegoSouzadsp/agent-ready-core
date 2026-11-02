@@ -6,15 +6,17 @@ export interface InboundTokenEntry {
 const PROFILE_SUFFIX = /^[A-Za-z0-9_.-]+$/;
 
 /**
- * why: split at the LAST `=` and only when the suffix is a valid profile name; base64 tokens end in `=` padding, so a first-`=` split or an empty suffix would corrupt them.
+ * why: split at the LAST `@`; `=` is not special so base64 padding stays in the token.
+ * hazard: a non-empty suffix that is not a valid profile name is a config error, never a silent whole-string token.
  */
 function parseEntry(raw: string): InboundTokenEntry {
-  const index = raw.lastIndexOf('=');
-  if (index > 0) {
-    const suffix = raw.slice(index + 1);
-    if (PROFILE_SUFFIX.test(suffix)) return { token: raw.slice(0, index), profile: suffix };
+  const index = raw.lastIndexOf('@');
+  if (index <= 0 || index === raw.length - 1) return { token: raw };
+  const suffix = raw.slice(index + 1);
+  if (!PROFILE_SUFFIX.test(suffix)) {
+    throw new Error(`token ${mask(raw.slice(0, index))} has an invalid agent profile "${suffix}" after "@"; profiles match [A-Za-z0-9_.-]+`);
   }
-  return { token: raw };
+  return { token: raw.slice(0, index), profile: suffix };
 }
 
 function mask(token: string): string {
@@ -22,9 +24,8 @@ function mask(token: string): string {
 }
 
 /**
- * Collects inbound tokens, each with an optional agent profile, from repeatable `--token <t>[=<profile>]` flags
- * and a comma-separated env value.
- * why: pure so the union/dedupe/conflict rules are testable without spawning the bin.
+ * why: pure, so the union/dedupe/conflict rules of repeatable `--token <t>[@<profile>]` flags and the comma-separated env value
+ * are testable without spawning the bin.
  */
 export function resolveInboundTokenEntries(argv: string[], env: NodeJS.ProcessEnv): InboundTokenEntry[] {
   const raws: string[] = [];
@@ -50,9 +51,4 @@ export function resolveInboundTokenEntries(argv: string[], env: NodeJS.ProcessEn
     if (!known) byToken.set(entry.token, entry);
   }
   return [...byToken.values()];
-}
-
-/** Tokens only, profiles dropped. Kept for callers that predate agent profiles. */
-export function resolveInboundTokens(argv: string[], env: NodeJS.ProcessEnv): string[] {
-  return resolveInboundTokenEntries(argv, env).map((entry) => entry.token);
 }

@@ -160,6 +160,9 @@ autonomy:
       const plugin = await loadPlugin(dir, FAKE_ENV);
       expect(plugin.agentPolicies.map((p) => p.name)).toEqual(['alpha', 'beta']);
 
+      await writeFile(join(dir, 'policies', 'README.md'), 'not: [valid yaml policy');
+      expect((await loadPlugin(dir, FAKE_ENV)).agentPolicies.map((p) => p.name)).toEqual(['alpha', 'beta']);
+
       await writeFile(join(dir, 'policies', 'c.yml'), policy('alpha'));
       await expect(loadPlugin(dir, FAKE_ENV)).rejects.toThrow(/Duplicate agent policy name "alpha"/);
       await rm(join(dir, 'policies', 'c.yml'));

@@ -12,15 +12,15 @@ Every `tools/call` runs the ARS pipeline before the system is touched: input val
 
 ## Inbound auth (host to gateway)
 
-Pass `inboundTokens` to `startGatewayHttp`, or `--token <t>[=<profile>]` (repeatable) / `ARS_GATEWAY_TOKENS=a,b` to `ars-gateway`. A `--token` without a value is an error, never auth silently off. With tokens configured, `/mcp` answers `401 {"error":"unauthorized"}` unless the request carries `Authorization: Bearer <token>`, before any session is created and before `X-Acting-User` is read. `GET /healthz` is public and returns only `{"status":"ok"}`.
+Pass `inboundTokens` to `startGatewayHttp`, or `--token <t>[@<profile>]` (repeatable) / `ARS_GATEWAY_TOKENS=a,b` to `ars-gateway`. A `--token` without a value is an error, never auth silently off. With tokens configured, `/mcp` answers `401 {"error":"unauthorized"}` unless the request carries `Authorization: Bearer <token>`, before any session is created and before `X-Acting-User` is read. `GET /healthz` is public and returns only `{"status":"ok"}`.
 
 The default host is `127.0.0.1`. Without tokens the gateway prints `inbound auth disabled; X-Acting-User is trusted` to stderr and refuses to listen beyond loopback, unless you pass `--insecure-no-auth` (`allowInsecureNoAuth: true`).
 
 ## Agent profiles (operator side)
 
-Give each token an agent profile: `--token <t>=<profile>` (repeatable) or `ARS_GATEWAY_TOKENS=a=bot1,b`. The split is at the last `=`, and only when the suffix matches `[A-Za-z0-9_.-]+`, so base64 tokens ending in `=` stay intact; a token without a profile keeps today's behaviour. Each profile is the `name` of an `agent-policy.yml` (see `ars agent init`), loaded from `--agent-policy <file|dir>` (repeatable) or from `policies/*.yml` in the plugin directory. The gateway refuses to start when a token names a profile with no policy, two policies share a name, a policy is invalid, or one token gets two profiles.
+Give each token an agent profile: `--token <t>@<profile>` (repeatable) or `ARS_GATEWAY_TOKENS=a@bot1,b`. The split is at the last `@`; the suffix must match `[A-Za-z0-9_.-]+` or the gateway fails to start (a bad suffix such as `tok@bot!` is never taken as part of the token). `=` is not special, so base64 padding stays in the token. A token without a profile keeps today's behaviour. Each profile is the `name` of an `agent-policy.yml` (see `ars agent init`), loaded from `--agent-policy <file|dir>` (repeatable) or from `policies/*.yml` in the plugin directory. The gateway refuses to start when a token names a profile with no policy, two policies share a name, a policy is invalid, or one token gets two profiles.
 
-The profile is read from the Bearer of each request, never from the session. Before validation, the policy's `execute_up_to` / `ask_up_to` ceiling (with `systems.<plugin name>` overrides) is resolved against the operation's risk: `allow` proceeds, `ask` goes through elicitation or returns `pending`, `deny` returns a `denied` signpost, writes an audit event with `decision: 'denied'` and never reaches your system. A profile can only add a human check; `confirmation` always requires one. The tool list is identical for every profile.
+The profile is read from the Bearer of each request, never from the session. Before validation, the policy's `execute_up_to` / `ask_up_to` ceiling (with `systems.<plugin name>` overrides) is resolved against the operation's risk (the `systems` key must equal the plugin name; the gateway warns on startup when no key of a policy matches): `allow` proceeds, `ask` goes through elicitation or returns `pending`, `deny` returns a `denied` signpost, writes an audit event with `decision: 'denied'` and never reaches your system. A profile can only add a human check; `confirmation` always requires one. The tool list is identical for every profile.
 
 ## Proof of governance (gateway to system)
 
@@ -36,7 +36,7 @@ Set `auth.signing_secret` in `plugin.yml` (`${ENV}` is substituted; a declared s
 | `X-ARS-Agent` | agent profile of the token, empty when it has none; always sent and signed |
 | `X-ARS-Signature` | `v1=` + HMAC-SHA256 hex |
 
-The signed string is `timestamp \n nonce \n METHOD \n path+query \n sha256hex(body) \n operation \n risk \n decision \n acting_user`, keyed by the secret; `acting_user` is the value of the acting-user header that was sent, or empty. Verify it in your system with the raw body string:
+The signed string (v1 finalized before the first npm publish; strings from earlier commits differ) is `timestamp \n nonce \n METHOD \n path+query \n sha256hex(body) \n operation \n risk \n decision \n acting_user`, keyed by the secret; `acting_user` is the value of the acting-user header that was sent, or empty. Verify it in your system with the raw body string:
 
 ```ts
 import express from 'express';

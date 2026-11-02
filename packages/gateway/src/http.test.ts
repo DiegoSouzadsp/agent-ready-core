@@ -537,7 +537,7 @@ describe('startGatewayHttp - agent profiles end to end', () => {
     const b = await connect('tok-b');
     const rb = await b.callTool({ name: 'registrar_item', arguments: { nome: 'x' } });
     expect(type(rb)).toBe('denied');
-    expect((rb.structuredContent as { reason: string }).reason).toBe('agent policy strict does not allow registrar_item (validated)');
+    expect((rb.structuredContent as { reason: string }).reason).toContain('agent policy strict does not allow registrar_item (validated)');
     expect(fetchMock).toHaveBeenCalledTimes(1);
     await a.close();
     await b.close();
@@ -636,5 +636,106 @@ describe('startGatewayHttp - agent profiles end to end', () => {
     const n = await plain.connect('tok-n');
     expect(await list(n)).toEqual(la);
     await n.close();
+  });
+});
+
+describe('startGatewayHttp - agent profile edge cases', () => {
+  const policyOf = (name: string, extra: Record<string, unknown> = {}) => ({
+    agent_policy: '1.0' as const,
+    name,
+    autonomy: { execute_up_to: 'free' as const, ask_up_to: 'free' as const },
+    ...extra,
+  });
+  let dir: string;
+  const gateways: RunningGateway[] = [];
+
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'ars-edge-'));
+    await mkdir(join(dir, 'schemas'));
+    await mkdir(join(dir, 'policies'));
+    await writeFile(join(dir, 'plugin.yml'), 'plugin: prof\nsystem_base_url: http://fake-system.local\n');
+    await writeFile(
+      join(dir, 'schemas', 's.yml'),
+      [
+        'schema_version: "0.1"',
+        'module: prof',
+        'operations:',
+        '  - id: P-01',
+        '    name: registrar_item',
+        '    description: Registra',
+        '    risk_level: validated',
+        '    input_schema:',
+        '      nome: { type: string, required: true }',
+        '',
+      ].join('\n'),
+    );
+    await writeFile(join(dir, 'executors.yml'), 'registrar_item:\n  method: POST\n  path: /api/items\n  body_from_input: true\n');
+    await writeFile(join(dir, 'policies', 'dup.yml'), 'agent_policy: "1.0"\nname: twin\nautonomy:\n  execute_up_to: free\n  ask_up_to: free\n');
+  });
+
+  afterAll(async () => {
+    for (const g of gateways) await new Promise<void>((r) => g.httpServer.close(() => r()));
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  const start = async (options: Partial<Parameters<typeof startGatewayHttp>[0]>) => {
+    const fetchMock = vi.fn(async () => new Response('{"id":1}', { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    const gateway = await startGatewayHttp({
+      pluginDir: dir,
+      port: 0,
+      fetchImpl: fetchMock as unknown as typeof fetch,
+      onAudit: () => {},
+      ...options,
+    });
+    gateways.push(gateway);
+    return { gateway, fetchMock };
+  };
+  const connect = async (gateway: RunningGateway, token: string) => {
+    const client = new Client({ name: 'edge', version: '0' });
+    await client.connect(
+      new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${gateway.port}/mcp`), {
+        requestInit: { headers: { Authorization: `Bearer ${token}` } },
+      }),
+    );
+    return client;
+  };
+  const type = (r: unknown) => (r as { structuredContent?: { type?: string } }).structuredContent?.type;
+
+  it('a systems exception keyed by the plugin name applies through a real client', async () => {
+    const policy = policyOf('sys', { systems: { prof: { operations: { registrar_item: 'allow' } } } });
+    const { gateway, fetchMock } = await start({ inboundTokens: ['t1', 't2'], agentPolicies: [policy, policyOf('plain')], tokenProfiles: { t1: 'sys', t2: 'plain' } });
+    const allowed = await connect(gateway, 't1');
+    expect(type(await allowed.callTool({ name: 'registrar_item', arguments: { nome: 'x' } }))).toBe('success');
+    const denied = await connect(gateway, 't2');
+    expect(type(await denied.callTool({ name: 'registrar_item', arguments: { nome: 'x' } }))).toBe('denied');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await allowed.close();
+    await denied.close();
+  });
+
+  it('tokenProfiles alone enables inbound auth and applies the profile', async () => {
+    const { gateway, fetchMock } = await start({ agentPolicies: [policyOf('strict')], tokenProfiles: { solo: 'strict' } });
+    const res = await fetch(`http://127.0.0.1:${gateway.port}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    expect(res.status).toBe(401);
+    const client = await connect(gateway, 'solo');
+    expect(type(await client.callTool({ name: 'registrar_item', arguments: { nome: 'x' } }))).toBe('denied');
+    expect(fetchMock).not.toHaveBeenCalled();
+    await client.close();
+  });
+
+  it('a name duplicated between plugin policies and agentPolicies fails before listening', async () => {
+    await expect(start({ agentPolicies: [policyOf('twin')] })).rejects.toThrow(/Duplicate agent policy name "twin"/);
+  });
+
+  it('warns when no systems key matches the plugin name', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await start({ inboundTokens: ['w'], agentPolicies: [policyOf('stray', { systems: { other: { operations: {} } } })] });
+      const message = spy.mock.calls.map((c) => String(c[0])).find((m) => m.includes('stray')) ?? '';
+      expect(message).toContain('other');
+      expect(message).toContain('"prof"');
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

@@ -22,7 +22,7 @@ export interface RegisterPluginToolsOptions {
   actingUser?: string;
   /** Resolved on every executor call; takes precedence over actingUser. */
   getActingUser?: () => string | undefined;
-  /** Agent profile of the request in flight; signed into X-ARS-Agent and named in a denial. */
+  /** Agent profile of the request in flight; signed into X-ARS-Agent. */
   getAgentProfile?: () => string | undefined;
   /** Operator-side ceiling resolved per call; forwarded to the pipeline. */
   autonomy?: RegisterArsToolsOptions['autonomy'];
@@ -74,7 +74,6 @@ export function registerPluginTools(
     exposeContract: opts.exposeContract,
     resolvers: opts.resolvers,
     autonomy: opts.autonomy,
-    agent: opts.getAgentProfile,
     // why: a gateway runs unattended, so decisions leave a trail unless the host picks another sink.
     onAudit: opts.onAudit ?? stderrAuditSink,
   });

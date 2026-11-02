@@ -8,7 +8,7 @@ import { loadPlugin } from './plugin.js';
 import { registerPluginTools } from './server.js';
 import type { LoadedPlugin } from './plugin.js';
 import type { AuditSink } from '@agent-ready/adapter-mcp';
-import { resolveAutonomy } from '@agent-ready/core';
+import { explainAutonomy } from '@agent-ready/core';
 import type { AdapterResolvers, AgentPolicy } from '@agent-ready/core';
 import { assertUniquePolicyNames } from './agent-policies.js';
 
@@ -68,6 +68,12 @@ export async function startGatewayHttp(options: StartGatewayHttpOptions): Promis
       throw new Error(`[gateway] Token mapped to agent profile "${profile}" but no agent policy with that name is loaded (--agent-policy or policies/).`);
     }
   }
+  for (const policy of agentPolicies) {
+    const keys = Object.keys(policy.systems ?? {});
+    if (keys.length > 0 && !keys.includes(plugin.name)) {
+      console.error(`[ars-gateway] warning: agent policy "${policy.name}" has systems keys [${keys.join(', ')}] but none matches the plugin name "${plugin.name}"; they will not apply.`);
+    }
+  }
   const inboundTokens = [...new Set([...(options.inboundTokens ?? []), ...Object.keys(tokenProfiles)])];
   const hasTokens = inboundTokens.some((token) => token !== '');
   if (!hasTokens && !options.allowInsecureNoAuth && !isLoopbackHost(host)) {
@@ -111,12 +117,13 @@ export async function startGatewayHttp(options: StartGatewayHttpOptions): Promis
       // invariant: no profile means no ceiling, so a token without one keeps today's behaviour.
       autonomy: (op) => {
         const policy = policiesByName.get(requestStore.getStore()?.profile ?? '');
-        if (!policy) return 'allow';
-        return resolveAutonomy(policy, {
+        if (!policy) return { decision: 'allow' };
+        const { decision, reason } = explainAutonomy(policy, {
           system: plugin.name,
           operation: op.definition.name,
           risk_level: op.definition.risk_level,
         });
+        return { decision, reason };
       },
       fetchImpl: options.fetchImpl,
       resolvers: options.resolvers,
