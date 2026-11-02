@@ -112,7 +112,7 @@ describe('registerArsTools', () => {
 
     expect(result.isError).toBe(false);
     expect(registrarExecutor).toHaveBeenCalledTimes(1);
-    expect(registrarExecutor).toHaveBeenCalledWith({ valor: 50 });
+    expect(registrarExecutor).toHaveBeenCalledWith({ valor: 50 }, { decision: 'executed', risk_level: 'validated' });
     expect(deletarExecutor).not.toHaveBeenCalled();
   });
 
@@ -244,7 +244,7 @@ describe('registerArsTools — foreign_key validation in the pipeline', () => {
     const result = await handler({ valor: 50, categoria_id: 15 });
 
     expect(result.isError).toBe(false);
-    expect(executor).toHaveBeenCalledWith({ valor: 50, categoria_id: 15 });
+    expect(executor).toHaveBeenCalledWith({ valor: 50, categoria_id: 15 }, { decision: 'executed', risk_level: 'validated' });
   });
 
   it('keeps pre-FK behavior when no entity.exists resolver is registered', async () => {
