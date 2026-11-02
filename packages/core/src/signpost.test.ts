@@ -167,6 +167,30 @@ describe('generateSignpost', () => {
     });
   });
 
+  describe('denied (agent policy)', () => {
+    it('denied signpost carries the reason', () => {
+      const reason = 'agent policy bot does not allow delete_ticket (confirmation)';
+      const sp = generateSignpost(op, 'denied', { reason });
+      expect(sp.type).toBe('denied');
+      expect(sp.guidance).toContain(reason);
+      expect(sp.reason).toBe(reason);
+      expect(sp.what_to_do).toBeTruthy();
+      expect(sp.next).toEqual([]);
+    });
+
+    it('denied signpost keeps what_to_do and next when given', () => {
+      const sp = generateSignpost(op, 'denied', { reason: 'r', what_to_do: 'ask the operator', next: ['consulta_mes'] });
+      expect(sp.what_to_do).toBe('ask the operator');
+      expect(sp.next?.[0].operation).toBe('consulta_mes');
+    });
+
+    it('previous types are unchanged', () => {
+      for (const type of ['success', 'validation_error', 'not_found', 'pending', 'blocked_transition', 'low_confidence'] as const) {
+        expect(generateSignpost(op, type, {}).type).toBe(type);
+      }
+    });
+  });
+
   describe('blocked_transition', () => {
     it('returns type blocked_transition', () => {
       const sp = generateSignpost(op, 'blocked_transition', { reason: 'Mês fechado' });

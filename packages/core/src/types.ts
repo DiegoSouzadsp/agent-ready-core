@@ -305,7 +305,7 @@ export interface FieldError {
  */
 export interface SignpostResult {
   /** Signpost type */
-  type: 'success' | 'validation_error' | 'not_found' | 'pending' | 'blocked_transition' | 'low_confidence';
+  type: 'success' | 'validation_error' | 'not_found' | 'pending' | 'blocked_transition' | 'low_confidence' | 'denied';
 
   /**
    * Plain text guidance — ALWAYS present.

@@ -281,5 +281,22 @@ export function generateSignpost(
         suggestions,
       };
     }
+
+    case 'denied': {
+      const reason = (data.reason as string) ?? `Operation "${operation.name}" is not allowed for this agent.`;
+      const what_to_do =
+        (data.what_to_do as string)
+        ?? 'Do not retry. Ask the operator to change the agent policy, or use an operation the policy allows.';
+      const next = normalizeNextActions(data.next as (string | NextAction)[] | undefined);
+
+      return {
+        type: 'denied',
+        guidance: `${reason} ${what_to_do}`,
+        _context: { ...baseContext, what_happened: 'Agent policy denied execution' },
+        reason,
+        what_to_do,
+        next,
+      };
+    }
   }
 }
