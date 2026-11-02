@@ -33,6 +33,7 @@ export * from './validator.js';
 export * from './signpost.js';
 export * from './risk.js';
 export * from './adapter.js';
+export * from './agent-policy.js';
 
 import {
   loadSchema,
