@@ -63,6 +63,8 @@ function renderBodyDeep(value: unknown, input: Record<string, unknown>): unknown
 export interface BuildExecutorOptions {
   fetchImpl?: typeof fetch;
   getActingUser?: () => string | undefined;
+  /** Agent profile of the request in flight; empty string is sent when undefined. */
+  getAgentProfile?: () => string | undefined;
 }
 
 function defaultMethod(spec: ExecutorSpec): ExecutorMethod {
@@ -134,6 +136,8 @@ export function buildExecutor(
       headers['X-ARS-Operation'] = operationName;
       headers['X-ARS-Risk'] = ctx.risk_level;
       headers['X-ARS-Decision'] = ctx.decision;
+      const agent = opts.getAgentProfile?.() ?? '';
+      headers['X-ARS-Agent'] = agent;
       headers['X-ARS-Signature'] = signArsRequest({
         secret: signingSecret,
         timestamp,
@@ -145,6 +149,7 @@ export function buildExecutor(
         risk: ctx.risk_level,
         decision: ctx.decision,
         actingUser: sentActingUser,
+        agent,
       });
     }
 

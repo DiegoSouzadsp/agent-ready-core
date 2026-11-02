@@ -259,6 +259,25 @@ describe('buildExecutor — X-ARS signing', () => {
     }
   });
 
+  it('X-ARS-Agent is sent and signed', async () => {
+    const withProfile = vi.fn().mockResolvedValue(jsonResponse({}));
+    await buildExecutor('get_item', { path: '/api/items' }, SIGNED, { fetchImpl: withProfile, getAgentProfile: () => 'bot1' })({}, ctx);
+    const [url, init] = sent(withProfile);
+    expect(init.headers['X-ARS-Agent']).toBe('bot1');
+    expect(verifyArsSignature({ method: 'GET', url, headers: init.headers }, 'sig-secret')).toMatchObject({ ok: true, agent: 'bot1' });
+
+    const noProfile = vi.fn().mockResolvedValue(jsonResponse({}));
+    await buildExecutor('get_item', { path: '/api/items' }, SIGNED, { fetchImpl: noProfile })({}, ctx);
+    const [url2, init2] = sent(noProfile);
+    expect(init2.headers['X-ARS-Agent']).toBe('');
+    expect(verifyArsSignature({ method: 'GET', url: url2, headers: init2.headers }, 'sig-secret')).toMatchObject({ ok: true, agent: '' });
+
+    const unsigned = vi.fn().mockResolvedValue(jsonResponse({}));
+    await buildExecutor('get_item', { path: '/api/items' }, MANIFEST, { fetchImpl: unsigned, getAgentProfile: () => 'bot1' })({}, ctx);
+    const names = Object.keys(sent(unsigned)[1].headers).map((h) => h.toLowerCase());
+    expect(names.filter((h) => h.startsWith('x-ars-'))).toEqual([]);
+  });
+
   it('signature covers the encoded path and query that was sent', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(jsonResponse({}));
     await buildExecutor('get_item', { path: '/api/items/{{id}}' }, SIGNED, { fetchImpl })({ id: 'a b/c' }, ctx);

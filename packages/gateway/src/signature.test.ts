@@ -20,7 +20,7 @@ describe('signArsRequest', () => {
         risk: 'free',
         decision: 'executed',
       }),
-    ).toBe('v1=1d54d346c7106e73d46657143b67f8f2f072183c88b1e6ba43cf646937643ee4');
+    ).toBe('v1=a72a5bb61e97c808fbfd899e3aef0cd90d7d7832aaedd5a83455bb264d29a022');
     expect(
       signArsRequest({
         secret: 's3cret',
@@ -33,8 +33,9 @@ describe('signArsRequest', () => {
         risk: 'confirmation',
         decision: 'confirmed',
         actingUser: 'alice',
+        agent: 'support-bot',
       }),
-    ).toBe('v1=728cd3bb118f64db9dfac2ad8bb87e59020ef262df35af83ce489fbead29f033');
+    ).toBe('v1=575d68d893a6f1c809cb3f32527026267f37daaf0f9c427938578de0b42f4672');
   });
 });
 
@@ -49,6 +50,7 @@ type Over = {
   risk?: string;
   decision?: 'executed' | 'confirmed';
   actingUser?: string;
+  agent?: string;
 };
 
 function signed(over: Over = {}) {
@@ -61,6 +63,7 @@ function signed(over: Over = {}) {
     risk: 'validated',
     decision: 'executed' as const,
     actingUser: '',
+    agent: '',
     ...over,
   };
   const headers: Record<string, string> = {
@@ -69,6 +72,7 @@ function signed(over: Over = {}) {
     'X-ARS-Operation': o.operation,
     'X-ARS-Risk': o.risk,
     'X-ARS-Decision': o.decision,
+    'X-ARS-Agent': o.agent,
     'X-ARS-Signature': signArsRequest({
       secret: SECRET,
       timestamp: o.timestamp,
@@ -80,6 +84,7 @@ function signed(over: Over = {}) {
       risk: o.risk,
       decision: o.decision,
       actingUser: o.actingUser,
+      agent: o.agent,
     }),
   };
   if (o.actingUser) headers['X-Acting-User'] = o.actingUser;
@@ -87,9 +92,24 @@ function signed(over: Over = {}) {
 }
 
 describe('verifyArsSignature', () => {
+  it('agent is signed and tampering or removal is rejected', () => {
+    const base = signed({ agent: 'bot1' });
+    expect(verifyArsSignature(base, SECRET)).toMatchObject({ ok: true, agent: 'bot1' });
+    expect(verifyArsSignature({ ...base, headers: { ...base.headers, 'X-ARS-Agent': 'bot2' } }, SECRET)).toEqual({ ok: false, reason: 'bad_signature' });
+    const removed = { ...base.headers };
+    delete removed['X-ARS-Agent'];
+    expect(verifyArsSignature({ ...base, headers: removed }, SECRET)).toEqual({ ok: false, reason: 'bad_signature' });
+
+    const empty = signed();
+    const without = { ...empty.headers };
+    delete without['X-ARS-Agent'];
+    expect(verifyArsSignature(empty, SECRET)).toMatchObject({ ok: true, agent: '' });
+    expect(verifyArsSignature({ ...empty, headers: without }, SECRET)).toMatchObject({ ok: true, agent: '' });
+  });
+
   it('round trip verifies absolute and relative urls and header casing', () => {
     const base = signed({ actingUser: 'alice' });
-    const expectOk = { ok: true, operation: 'criar_item', risk: 'validated', decision: 'executed', nonce: NONCE, actingUser: 'alice' };
+    const expectOk = { ok: true, operation: 'criar_item', risk: 'validated', decision: 'executed', nonce: NONCE, actingUser: 'alice', agent: '' };
     expect(verifyArsSignature(base, SECRET)).toEqual(expectOk);
     expect(verifyArsSignature({ ...base, url: 'http://h/api/items?q=1' }, SECRET)).toEqual(expectOk);
     const lower = Object.fromEntries(Object.entries(base.headers).map(([k, v]) => [k.toLowerCase(), [v]]));
@@ -143,7 +163,8 @@ describe('verifyArsSignature', () => {
 
   it('missing and malformed headers', () => {
     const base = signed();
-    for (const name of Object.keys(base.headers)) {
+    // why: X-ARS-Agent may be absent (it counts as empty); the signature decides.
+    for (const name of Object.keys(base.headers).filter((n) => n !== 'X-ARS-Agent')) {
       const rest = { ...base.headers };
       delete rest[name];
       expect(verifyArsSignature({ ...base, headers: rest }, SECRET)).toEqual({ ok: false, reason: 'missing_header' });

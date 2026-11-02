@@ -15,6 +15,8 @@ export interface SignArsRequestParams {
   decision: string;
   /** Value of the acting-user header that was sent; empty when none. */
   actingUser?: string;
+  /** Agent profile name sent in X-ARS-Agent; empty when the token has no profile. */
+  agent?: string;
 }
 
 // invariant: the one place the signed string is assembled; signing and verifying share it so they cannot drift.
@@ -30,6 +32,7 @@ function canonicalString(p: Omit<SignArsRequestParams, 'secret'>): string {
     p.risk,
     p.decision,
     p.actingUser ?? '',
+    p.agent ?? '',
   ].join('\n');
 }
 
@@ -48,7 +51,7 @@ export interface ArsSignedRequest {
 }
 
 export type ArsVerifyResult =
-  | { ok: true; operation: string; risk: string; decision: 'executed' | 'confirmed'; nonce: string; actingUser: string }
+  | { ok: true; operation: string; risk: string; decision: 'executed' | 'confirmed'; nonce: string; actingUser: string; agent: string }
   | { ok: false; reason: 'missing_header' | 'bad_format' | 'expired' | 'bad_signature' };
 
 const DEFAULT_MAX_SKEW_MS = 120_000;
@@ -88,6 +91,8 @@ export function verifyArsSignature(
   }
 
   const actingUser = lowered.get((opts.actingUserHeader ?? 'x-acting-user').toLowerCase()) ?? '';
+  // invariant: an absent X-ARS-Agent counts as empty; the signature, not the header, tells removal from absence.
+  const agent = lowered.get('x-ars-agent') ?? '';
   const parsed = new URL(req.url, 'http://ars.invalid');
   const expected = signArsRequest({
     secret,
@@ -100,9 +105,10 @@ export function verifyArsSignature(
     risk,
     decision,
     actingUser,
+    agent,
   });
   const a = Buffer.from(expected);
   const b = Buffer.from(signature);
   if (a.length !== b.length || !timingSafeEqual(a, b)) return { ok: false, reason: 'bad_signature' };
-  return { ok: true, operation, risk, decision, nonce, actingUser };
+  return { ok: true, operation, risk, decision, nonce, actingUser, agent };
 }
