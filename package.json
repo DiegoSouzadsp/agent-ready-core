@@ -15,7 +15,7 @@
     "test:coverage": "vitest run --coverage",
     "lint": "npm run lint --workspaces --if-present",
     "clean": "npm run clean --workspaces --if-present",
-    "release:check": "npm run build && npm publish --dry-run --workspaces --if-present"
+    "release:check": "npm run clean && npm run build -w packages/core && npm run build && npm publish --dry-run -w packages/core && npm publish --dry-run -w packages/adapter-mcp && npm publish --dry-run -w packages/adapter-rest && npm publish --dry-run -w packages/adapter-sqlite && npm publish --dry-run -w packages/cli && npm publish --dry-run -w packages/gateway"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

@@ -19,7 +19,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/DiegoSouzadsp/agent-ready-core.git",
+    "url": "git+https://github.com/DiegoSouzadsp/agent-ready-core.git",
     "directory": "packages/adapter-mcp"
   },
   "peerDependencies": {

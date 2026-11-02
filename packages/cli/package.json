@@ -4,7 +4,7 @@
   "description": "Command-line interface for Agent-Ready Schema.",
   "type": "module",
   "bin": {
-    "ars": "./dist/index.js"
+    "ars": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
@@ -17,7 +17,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/DiegoSouzadsp/agent-ready-core.git",
+    "url": "git+https://github.com/DiegoSouzadsp/agent-ready-core.git",
     "directory": "packages/cli"
   },
   "dependencies": {
