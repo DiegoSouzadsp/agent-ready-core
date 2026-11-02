@@ -6,6 +6,7 @@ import { AgentReady } from '@agent-ready/core';
 import fs from 'node:fs';
 import path from 'node:path';
 import { INIT_TEMPLATE } from './init-template.js';
+import { importOpenApi, OpenApiImportError } from './openapi-init.js';
 import { buildHookScript, buildSettingsSnippet, HOOK_DOC_URL, type HookOp } from './hooks-export.js';
 
 const program = new Command();
@@ -205,28 +206,49 @@ program
 
 program
   .command('init')
-  .description('Create a starter agent-ready.yml with one operation per risk level')
+  .description('Create a starter agent-ready.yml, or generate one from an OpenAPI 3.x spec')
   .argument('[dir]', 'target directory', '.')
   .option('--force', 'overwrite an existing agent-ready.yml')
-  .action((dir: string, opts: { force?: boolean }) => {
+  .option('--from-openapi <source>', 'generate from an OpenAPI 3.x file (.json/.yaml/.yml) or http(s) URL')
+  .action(async (dir: string, opts: { force?: boolean; fromOpenapi?: string }) => {
     try {
       const target = path.resolve(process.cwd(), dir, 'agent-ready.yml');
       if (fs.existsSync(target) && !opts.force) {
-        console.error(pc.red(`\n❌ ${target} already exists. Use --force to overwrite.`));
+        console.error(pc.red(`
+❌ ${target} already exists. Use --force to overwrite.`));
         process.exit(1);
       }
-      try {
-        AgentReady.fromYAML(INIT_TEMPLATE);
-      } catch (err: any) {
-        console.error(pc.red(`\n❌ Generated template is invalid: ${err.message}`));
-        process.exit(1);
+      let content = INIT_TEMPLATE;
+      if (opts.fromOpenapi) {
+        try {
+          const result = await importOpenApi(opts.fromOpenapi);
+          content = result.yaml;
+          for (const w of result.warnings) console.error(pc.yellow(`⚠ ${w}`));
+        } catch (err: any) {
+          if (err instanceof OpenApiImportError) {
+            console.error(pc.red('\n❌ Could not convert the OpenAPI spec:'));
+            for (const p of err.problems) console.error(pc.red(`  - ${p}`));
+            process.exit(1);
+          }
+          throw err;
+        }
+      } else {
+        try {
+          AgentReady.fromYAML(INIT_TEMPLATE);
+        } catch (err: any) {
+          console.error(pc.red(`
+❌ Generated template is invalid: ${err.message}`));
+          process.exit(1);
+        }
       }
       fs.mkdirSync(path.dirname(target), { recursive: true });
-      fs.writeFileSync(target, INIT_TEMPLATE, 'utf8');
-      console.log(pc.green(`\n✅ Created ${target}`));
+      fs.writeFileSync(target, content, 'utf8');
+      console.log(pc.green(`
+✅ Created ${target}`));
       console.log(`Next: ars validate ${target}`);
     } catch (err: any) {
-      console.error(pc.red(`\n❌ Error: ${err.message}`));
+      console.error(pc.red(`
+❌ Error: ${err.message}`));
       process.exit(1);
     }
   });
@@ -271,4 +293,4 @@ hooks
     }
   });
 
-program.parse();
+await program.parseAsync();

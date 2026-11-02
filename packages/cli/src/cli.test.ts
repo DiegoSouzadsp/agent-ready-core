@@ -232,3 +232,175 @@ describe('ars hooks export', () => {
     expect(snippet).toEqual(fixture.settings_snippet);
   });
 });
+
+describe('init --from-openapi', () => {
+  const fixtureFile = path.resolve(__dirname, '__fixtures__/petstore-mini.yaml');
+  const mkTmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'ars-oai-'));
+  const gen = async (doc: any) => (await import('./openapi-init.js')).convertOpenApi(doc);
+  const loadFixture = async () => (await import('./openapi-init.js')).loadOpenApiSource(fixtureFile);
+  const opsOf = async (doc?: any) => {
+    const { parse } = await import('yaml');
+    const r = await gen(doc ?? (await loadFixture()));
+    const parsed = parse(r.yaml);
+    return { r, ops: Object.fromEntries(parsed.operations.map((o: any) => [o.name, o])) as Record<string, any> };
+  };
+
+  it('generates the 8 fixture operations with unique ids and a loadable schema', async () => {
+    const { r, ops } = await opsOf();
+    expect(r.operations).toEqual(['listPets', 'createPet', 'get_pets_petid', 'updatePet', 'deletePet', 'renamePet', 'listOwners', 'getOwner']);
+    const ids = Object.values(ops).map((o: any) => o.id);
+    expect(new Set(ids).size).toBe(8);
+    const { AgentReady } = await import('@agent-ready/core');
+    expect(() => AgentReady.fromYAML(r.yaml)).not.toThrow();
+    expect(ops.listPets.description).toBe('List pets');
+  });
+
+  it('maps risk by HTTP method', async () => {
+    const { ops } = await opsOf();
+    for (const n of ['listPets', 'get_pets_petid', 'listOwners', 'getOwner']) {
+      expect([ops[n].risk_level, ops[n].autonomy_policy]).toEqual(['free', 'execute_immediately']);
+    }
+    expect([ops.createPet.risk_level, ops.createPet.autonomy_policy]).toEqual(['validated', 'execute_after_validation']);
+    expect(ops.updatePet.risk_level).toBe('contextual');
+    expect(ops.renamePet.risk_level).toBe('contextual');
+    expect(ops.deletePet.risk_level).toBe('confirmation');
+    expect(ops.deletePet.human_confirmation.required).toBe(true);
+    expect(ops.deletePet.human_confirmation.message_template).toBeTruthy();
+  });
+
+  it('maps types, enums and required as a map', async () => {
+    const { ops } = await opsOf();
+    const c = ops.createPet.input_schema;
+    expect(Array.isArray(c)).toBe(false);
+    expect(c.name).toMatchObject({ type: 'string', required: true });
+    expect(c.tag.type).toBe('string');
+    expect(c.birthday.type).toBe('date');
+    expect(c.weight.type).toBe('decimal');
+    expect(c.vaccinated.type).toBe('bool');
+    expect(c.registered_at.type).toBe('datetime');
+    expect(ops.listPets.input_schema.status).toMatchObject({ type: 'enum', values: ['available', 'pending', 'sold'], required: false });
+    expect(ops.listPets.input_schema.limit.type).toBe('int');
+    expect(ops.get_pets_petid.input_schema.petId).toMatchObject({ type: 'int', required: true });
+  });
+
+  it('resolves local $ref and merges path param with body properties', async () => {
+    const { r, ops } = await opsOf();
+    expect(Object.keys(ops.updatePet.input_schema)).toEqual(['petId', 'name', 'tag', 'birthday', 'weight', 'vaccinated', 'registered_at']);
+    expect(r.yaml).not.toContain('$ref');
+  });
+
+  it('declares summary only for array GETs', async () => {
+    const { ops } = await opsOf();
+    expect(ops.listPets.response_strategy).toEqual({ mode: 'summary', summary_fields: ['id', 'name', 'tag'] });
+    expect(ops.listOwners.response_strategy).toEqual({ mode: 'summary', summary_fields: ['id', 'name', 'email'] });
+    for (const n of ['get_pets_petid', 'getOwner', 'createPet', 'updatePet', 'deletePet', 'renamePet']) {
+      expect(ops[n].response_strategy).toBeUndefined();
+    }
+    const bare = await gen({
+      openapi: '3.0.0', info: { title: 'x' },
+      paths: { '/a': { get: { responses: { '200': { content: { 'application/json': { schema: { type: 'array', items: { type: 'object' } } } } } } } } },
+    });
+    expect(bare.yaml).toContain('mode: summary');
+    expect(bare.yaml).not.toContain('summary_fields');
+  });
+
+  it('warns on external $ref without failing and keeps the YAML valid', async () => {
+    const r = await gen({
+      openapi: '3.0.0', info: { title: 'x' },
+      paths: { '/a': { post: { operationId: 'a', requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { ext: { $ref: './other.yaml#/X' }, ok: { type: 'string' } } } } } } } } },
+    });
+    expect(r.warnings.join(' ')).toContain('./other.yaml#/X');
+    expect(r.yaml).not.toContain('$ref');
+  });
+
+  it('maps byte to base64 and untyped/object/array to any', async () => {
+    const r = await gen({
+      openapi: '3.0.0', info: { title: 'x' },
+      paths: { '/a': { post: { operationId: 'a', requestBody: { content: { 'application/json': { schema: { type: 'object', properties: {
+        b: { type: 'string', format: 'byte' }, o: { type: 'object' }, l: { type: 'array' }, u: {},
+      } } } } } } } },
+    });
+    const { parse } = await import('yaml');
+    const f = parse(r.yaml).operations[0].input_schema;
+    expect([f.b.type, f.o.type, f.l.type, f.u.type]).toEqual(['base64', 'any', 'any', 'any']);
+  });
+
+  it('fails without writing for invalid inputs', async () => {
+    const dir = mkTmp();
+    const cases: Record<string, string> = {
+      'swagger.yaml': 'swagger: "2.0"\ninfo: {title: x}\npaths: {}\n',
+      'garbage.txt': 'just: [unclosed',
+      'empty.yaml': 'openapi: 3.0.0\ninfo: {title: x}\npaths: {}\n',
+      'dup.yaml': 'openapi: 3.0.0\ninfo: {title: x}\npaths:\n  /a:\n    get: {operationId: same}\n  /b:\n    get: {operationId: same}\n',
+    };
+    for (const [file, content] of Object.entries(cases)) {
+      const src = path.join(dir, file);
+      fs.writeFileSync(src, content);
+      const out = path.join(dir, `out-${file}`);
+      const r = await runCli(`init --from-openapi "${src}" "${out}"`);
+      expect(r.code, file).toBe(1);
+      expect(r.stderr.length).toBeGreaterThan(0);
+      expect(fs.existsSync(path.join(out, 'agent-ready.yml')), file).toBe(false);
+    }
+    const out = path.join(dir, 'out-missing');
+    const r = await runCli(`init --from-openapi "${path.join(dir, 'nope.yaml')}" "${out}"`);
+    expect(r.code).toBe(1);
+    expect(fs.existsSync(path.join(out, 'agent-ready.yml'))).toBe(false);
+  });
+
+  it('CLI generates, validates, lists, accepts JSON, and honours --force', async () => {
+    const dir = mkTmp();
+    const r = await runCli(`init --from-openapi "${fixtureFile}" "${dir}"`);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain('Next: ars validate');
+    const target = path.join(dir, 'agent-ready.yml');
+    expect((await runCli(`validate "${target}"`)).code).toBe(0);
+    const list = await runCli(`list "${target}"`);
+    for (const n of ['listPets', 'createPet', 'get_pets_petid', 'updatePet', 'deletePet', 'renamePet', 'listOwners', 'getOwner']) {
+      expect(list.stdout).toContain(n);
+    }
+    const before = fs.readFileSync(target);
+    const again = await runCli(`init --from-openapi "${fixtureFile}" "${dir}"`);
+    expect(again.code).toBe(1);
+    expect(fs.readFileSync(target).equals(before)).toBe(true);
+    fs.writeFileSync(target, 'stale');
+    expect((await runCli(`init --from-openapi "${fixtureFile}" "${dir}" --force`)).code).toBe(0);
+    expect(fs.readFileSync(target, 'utf8')).toContain('listPets');
+
+    const { parse } = await import('yaml');
+    const jsonFile = path.join(dir, 'spec.json');
+    fs.writeFileSync(jsonFile, JSON.stringify(parse(fs.readFileSync(fixtureFile, 'utf8'))));
+    const dir2 = mkTmp();
+    expect((await runCli(`init --from-openapi "${jsonFile}" "${dir2}"`)).code).toBe(0);
+    const strip = (s: string) => s.replace(/updated_at:.*/, '');
+    expect(strip(fs.readFileSync(path.join(dir2, 'agent-ready.yml'), 'utf8'))).toBe(strip(fs.readFileSync(target, 'utf8')));
+  });
+
+  it('loads from an http URL like a file and reports HTTP status failures', async () => {
+    const http = await import('node:http');
+    const body = fs.readFileSync(fixtureFile);
+    const server = http.createServer((req, res) => {
+      if (req.url === '/openapi.yaml') {
+        res.writeHead(200, { 'content-type': 'text/yaml' });
+        res.end(body);
+      } else {
+        res.writeHead(404).end();
+      }
+    });
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const port = (server.address() as any).port;
+    try {
+      const { loadOpenApiSource, convertOpenApi } = await import('./openapi-init.js');
+      const viaUrl = convertOpenApi(await loadOpenApiSource(`http://127.0.0.1:${port}/openapi.yaml`));
+      const viaFile = convertOpenApi(await loadOpenApiSource(fixtureFile));
+      expect(viaUrl.operations).toEqual(viaFile.operations);
+      await expect(loadOpenApiSource(`http://127.0.0.1:${port}/missing.yaml`)).rejects.toThrow(/404/);
+      const dir = mkTmp();
+      const r = await runCli(`init --from-openapi http://127.0.0.1:${port}/openapi.yaml "${dir}"`);
+      expect(r.code).toBe(0);
+      expect(fs.existsSync(path.join(dir, 'agent-ready.yml'))).toBe(true);
+    } finally {
+      server.close();
+    }
+  });
+});
