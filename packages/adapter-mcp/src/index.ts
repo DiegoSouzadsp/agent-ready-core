@@ -7,7 +7,7 @@ import { runOperation, guardEnforced } from './pipeline.js';
 import type { AuditSink, ElicitationHost } from './pipeline.js';
 import type { ExecutorMap, McpToolResult } from './types.js';
 
-export type { ExecutorFn, ExecutorMap, McpToolResult } from './types.js';
+export type { ExecutorFn, ExecutorMap, ExecutorContext, McpToolResult } from './types.js';
 export {
   fieldConstraintSummary,
   inputFieldsToZodShape,

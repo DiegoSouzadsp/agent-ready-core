@@ -2,7 +2,7 @@
 
 An open standard for describing, in the system's own contract, what an AI agent may do on its own, what needs validation, and what needs a human.
 
-**Status:** v0.1 draft spec with one reference implementation (FamilyOS, the author's own system). Contributions and a second adopter are the next step.
+**Status:** v0.1 draft spec with one reference implementation (FamilyOS, the author's own system). Contributions and a second adopter are the next step. Packages are at 0.2.0 and not yet on npm; `npm run release:check` is the dry run (clean build plus a publish dry-run of the six tarballs).
 
 ![Where ARS sits: Agent, Hook, MCP, ARS runtime and System, with agent-ready.yml feeding the hook and the runtime](docs/assets/where-ars-sits.svg)
 
@@ -98,6 +98,15 @@ Merge settings.snippet.json into .claude/settings.json (format: https://code.cla
 ```
 
 - `ars init [dir] [--force]` writes `<dir>/agent-ready.yml` with four operations (free, validated, contextual, confirmation) and English comments. It refuses to overwrite an existing file without `--force`.
+- `ars init --from-openapi <file.json|.yaml|url> [dir] [--force]` generates a first `agent-ready.yml` from an OpenAPI document. Risk comes from the HTTP method: GET `free`, POST `validated`, PUT/PATCH `contextual`, DELETE `confirmation`. Local `$ref` is resolved, an external `$ref` warns on stderr, the result is validated before it is written, and on failure nothing is written. Review the levels before you rely on them. Real output on the fixture `packages/cli/src/__fixtures__/petstore-mini.yaml` (path shortened, colors stripped):
+
+```console
+$ npx ars init --from-openapi packages/cli/src/__fixtures__/petstore-mini.yaml petstore
+Created petstore/agent-ready.yml
+Next: ars validate petstore/agent-ready.yml
+```
+
+  The file holds `module: petstore-mini` with 8 operations, e.g. `listPets` (`free`), `createPet` (`validated`), `updatePet` (`contextual`), `deletePet` (`confirmation`).
 - `ars hooks export <schema> --target claude-code [--server <name>] [--out <dir>]` writes `ars-pretooluse.mjs` and `settings.snippet.json` (matcher `mcp__<name>__.*`). The hook answers `allow` for free, validated and contextual operations, `ask` for confirmation, and nothing for tools it does not know. `--server` defaults to `agent-ready`, `--out` to `.`. The hook widens autonomy according to `risk_level`: `allow` skips Claude Code's normal permission prompt, and only `confirmation` becomes `ask` (with the `message_template` rendered from the tool input).
 
 A runnable server with one operation per risk level is in [`examples/quickstart/`](examples/quickstart/).
@@ -119,9 +128,30 @@ ARS is not a replacement for MCP tool annotations or for runtime hooks. It cover
 | Response strategy (summary vs full) | ❌ | ❌ | ✅ `mode: summary` with `summary_fields` returns only those fields plus a `next` to `detail_operation`. 🟡 Top-level fields only; `paginated` and `full` are declared, not enforced |
 | Audit | ❌ | 🟡 Possible via hook logging | ✅ One `AuditEvent` per call to the `onAudit` sink, or JSON lines on stderr with `ARS_AUDIT=stderr` (the gateway writes to stderr by default). 🟡 The schema's `audit.log` flag is not read; only `include_fields` is used |
 | Where the policy lives | Client, as a hint | Client, per installation | The system's own contract |
+| Proof on the system side | ❌ | ❌ | ✅ The gateway signs each call it forwards (`X-ARS-Signature`), and the system verifies it with `verifyArsSignature`, so it can refuse calls that skipped the governance |
 | Who writes it | The tool author | The operator of the agent | The owner of the system |
 
 In short: ARS does not compete with annotations or hooks. The MCP adapter already emits annotations from the risk level (`operationToolAnnotations` in [`packages/adapter-mcp/src/schema.ts`](packages/adapter-mcp/src/schema.ts): FREE gives `readOnlyHint`, CONFIRMATION gives `destructiveHint`; the other levels emit none), and hooks are the natural place to enforce, on the client, the policy ARS declares. The gateway enforces on the server side, where the check does not depend on trusting the client. The MCP SDK itself documents annotations as hints that clients should not make trust decisions from, which is why ARS also runs validation in the pipeline.
+
+## Closing the door: gateway auth and proof of governance
+
+Two things make the gateway usable as the only way in. Both are in [`packages/gateway`](packages/gateway/README.md).
+
+- **Inbound auth.** Configure `inboundTokens`, `ars-gateway --token <t>` (repeatable) or `ARS_GATEWAY_TOKENS=a,b`. A request to `/mcp` without a valid Bearer token gets 401 before any session exists; `/healthz` stays public. With no tokens configured the gateway still starts, prints a warning on stderr, and trusts `X-Acting-User`.
+- **Proof of governance.** With `auth.signing_secret` in `plugin.yml` (`${ENV}` is accepted), every request the gateway sends to the system carries `X-ARS-Timestamp`, `X-ARS-Operation`, `X-ARS-Risk`, `X-ARS-Decision` (`executed` or `confirmed`) and `X-ARS-Signature` (`v1=<hex>`, HMAC-SHA256 over timestamp, method, path and query, body hash, operation and decision). The system verifies it with `verifyArsSignature`:
+
+```ts
+import { verifyArsSignature } from '@agent-ready/gateway';
+
+app.use(express.text({ type: '*/*' }));
+app.use((req, res, next) => {
+  const v = verifyArsSignature({ method: req.method, url: req.originalUrl, body: req.body, headers: req.headers }, process.env.ARS_SIGNING_SECRET!);
+  if (!v.ok) return res.status(401).json({ error: v.reason });
+  next(); // v.operation, v.risk, v.decision are available; require v.decision === 'confirmed' on destructive routes
+});
+```
+
+The system then accepts only calls that went through the governance: anything without a valid signature, including a direct call that skips the gateway, is rejected by the system itself. Limits: a signature proves the call passed the gateway at that moment, a replay inside the skew window (5 minutes by default) is still possible so destructive handlers should be idempotent, and the gateway does not store or rotate the secret. Executors written in code receive `{ decision, risk_level }` as an optional second argument (`ExecutorContext`).
 
 ## How confirmation works today
 
@@ -145,12 +175,14 @@ There is no text-based resume: a "CONFIRMAR" reply is not a protocol and the pac
 - Emits one audit event per call to `onAudit` or stderr ([`pipeline.ts`](packages/adapter-mcp/src/pipeline.ts) `emitAudit`).
 - Creates a starter schema and a Claude Code hook from a schema ([`packages/cli/src/index.ts`](packages/cli/src/index.ts): `ars init`, `ars hooks export`).
 
-## What it can do
+## What it can do next
 
 - Export hooks for runtimes other than Claude Code.
 - Configure `resolvers` per plugin in the gateway; today only the programmatic option exists.
 - Run against a second reference system besides FamilyOS.
-- Publish the packages to npm.
+- Publish the packages to npm (versions are 0.2.0 and ready; `npm run release:check` is the dry run).
+- OAuth 2.1 for the gateway; inbound auth is a static Bearer list today.
+- Session expiry in the gateway.
 
 ## Pains it solves
 
@@ -173,7 +205,7 @@ There is no text-based resume: a "CONFIRMAR" reply is not a protocol and the pac
 | `packages/adapter-mcp` | Bridges an ARS schema to MCP tools, running the governance pipeline on each call (validation, state guards through `resolvers`, elicitation, audit through `onAudit`) |
 | `packages/adapter-sqlite` | Resolves state-guard predicates against SQLite |
 | `packages/adapter-rest` | Resolves predicates via HTTP |
-| `packages/gateway` | `@agent-ready/gateway`: generic ARS gateway engine. Loads a declarative plugin directory (ARS schemas plus an HTTP executor mapping) and serves it as MCP tools over Streamable HTTP, with no per-system code. Takes `resolvers` and `onAudit` as options; audit goes to stderr by default. CLI: `ars-gateway --plugin <dir> [--port 8808]` |
+| `packages/gateway` | `@agent-ready/gateway`: generic ARS gateway engine. Loads a declarative plugin directory (ARS schemas plus an HTTP executor mapping) and serves it as MCP tools over Streamable HTTP, with no per-system code. Takes `resolvers` and `onAudit` as options; audit goes to stderr by default. CLI: `ars-gateway --plugin <dir> [--port 8808] [--token <t>]...`. Inbound Bearer tokens (`--token`, `ARS_GATEWAY_TOKENS`, `inboundTokens`) and request signing for the target system (`signing_secret` in `plugin.yml`, verified with `verifyArsSignature`) |
 
 `apps/docs` (Astro Starlight site) and `apps/playground` (Svelte schema editor) are early-stage.
 

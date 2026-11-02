@@ -51,6 +51,21 @@ claude mcp add support-tickets -- npx tsx examples/quickstart/server.ts
 
 or put the same `command`/`args` in a `.mcp.json` file in the project root, in the same shape as the Desktop snippet above (relative path is fine when Claude Code is started from the repo root).
 
+**Cursor** (not yet verified in Cursor): add the same server to `.cursor/mcp.json` in the project, or to `~/.cursor/mcp.json` for all projects (use your absolute path).
+
+```json
+{
+  "mcpServers": {
+    "support-tickets": {
+      "command": "npx",
+      "args": ["tsx", "/ABSOLUTE/PATH/TO/agent-ready-core/examples/quickstart/server.ts"]
+    }
+  }
+}
+```
+
+Any MCP client that can launch a stdio server (Cursor included) works the same way: give it the command `npx` and the args above. Elicitation (the real confirmation prompt) only happens in a client that supports it; in the others `delete_ticket` stays `pending` and nothing is deleted. I have not checked which clients support elicitation, so run the smoke test below or "Delete ticket 1." to see which outcome you get.
+
 ## Three prompts to try
 
 1. **Free:** "List open tickets."
